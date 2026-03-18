@@ -151,6 +151,13 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .empty p{font-size:13px}
 
 /* ── Scrollbar ── */
+.sync-overlay{position:fixed;inset:0;background:rgba(13,15,20,.92);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px}
+.sync-overlay h3{font-family:var(--serif);font-size:20px;color:var(--text)}
+.sync-overlay p{font-size:13px;color:var(--muted);text-align:center;max-width:320px;line-height:1.6}
+.spinner{width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.sync-bar{width:260px;height:4px;background:var(--border);border-radius:2px;overflow:hidden}
+.sync-bar-fill{height:100%;background:var(--accent);border-radius:2px;transition:width .4s ease;width:0%}
 ::-webkit-scrollbar{width:6px;height:6px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
@@ -261,6 +268,10 @@ tr:hover td{background:rgba(255,255,255,.02)}
   </nav>
   <div class="sidebar-bottom">
     <span id="gs-status-badge" class="config-badge">⚙ Sin configurar</span>
+    <button onclick="syncFromSheets()" class="btn btn-outline" style="width:100%;margin-top:10px;font-size:12px;padding:7px" title="Recargar datos desde Google Sheets">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+      Sincronizar
+    </button>
   </div>
 </div>
 
@@ -806,6 +817,12 @@ tr:hover td{background:rgba(255,255,255,.02)}
 </div><!-- /main -->
 
 <!-- ── TOAST ── -->
+<div id="sync-overlay" class="sync-overlay" style="display:none">
+  <div class="spinner"></div>
+  <h3>Sincronizando datos</h3>
+  <p id="sync-msg">Conectando con Google Sheets...</p>
+  <div class="sync-bar"><div class="sync-bar-fill" id="sync-bar-fill"></div></div>
+</div>
 <div id="toast"></div>
 
 <!-- ── MODAL EDITAR CATEGORÍA ── -->
@@ -891,7 +908,7 @@ const STATE = {
 };
 
 // ── Load from localStorage ──
-function loadState() {
+function loadLocalState() {
   try {
     const s = localStorage.getItem('gf_state');
     if (s) {
@@ -904,11 +921,9 @@ function loadState() {
   document.getElementById('ing-fecha').value = today;
   document.getElementById('mg-fecha').value  = today;
   document.getElementById('mov-fecha').value = today;
-  // Set default report range (current month)
   const now = new Date();
   document.getElementById('rep-desde').value = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
   document.getElementById('rep-hasta').value = today;
-  // Load config fields
   document.getElementById('cfg-script-url').value = STATE.config.scriptUrl || '';
   updateGSBadge();
   updateLocalStats();
@@ -917,6 +932,116 @@ function loadState() {
 function saveState() {
   localStorage.setItem('gf_state', JSON.stringify(STATE));
   updateLocalStats();
+}
+
+// ─── Sync from Sheets ────────────────────────────────────────
+function setSyncMsg(msg, pct) {
+  document.getElementById('sync-msg').textContent = msg;
+  document.getElementById('sync-bar-fill').style.width = pct + '%';
+}
+
+async function syncFromSheets() {
+  if(!STATE.config.scriptUrl) return;
+  const overlay = document.getElementById('sync-overlay');
+  overlay.style.display = 'flex';
+  try {
+    setSyncMsg('Leyendo facturas...', 10);
+    const rFac = await gasGet({ action:'getAll', sheet:'Facturas' });
+    setSyncMsg('Leyendo detalle de ítems...', 28);
+    const rDet = await gasGet({ action:'getAll', sheet:'Detalle_Facturas' });
+    setSyncMsg('Leyendo ingresos...', 46);
+    const rIng = await gasGet({ action:'getAll', sheet:'Ingresos' });
+    setSyncMsg('Leyendo movimientos...', 62);
+    const rMov = await gasGet({ action:'getAll', sheet:'Movimientos' });
+    setSyncMsg('Leyendo catálogo de insumos...', 78);
+    const rIns = await gasGet({ action:'getAll', sheet:'Insumos' });
+    setSyncMsg('Procesando datos...', 90);
+
+    // ── Rebuild facturas ──────────────────────────────────────
+    if(rFac.ok && rFac.rows.length) {
+      const detRows = rDet.ok ? rDet.rows : [];
+      STATE.facturas = rFac.rows.map(h => ({
+        header: {
+          numero:    h.No_Factura,
+          fecha:     h.Fecha instanceof Date ? h.Fecha.toISOString().split('T')[0] : String(h.Fecha).split('T')[0],
+          emisorRS:  h.Emisor,
+          emisorNC:  h.NomComercial,
+          emisorNIT: h.NIT,
+          emisorDir: h.Direccion,
+          total:     parseFloat(h.Total) || 0,
+          cuenta:    h.Cuenta,
+          cufe:      h.CUFE,
+          obs:       h.Observaciones,
+          manual:    !h.CUFE,
+          dianStatus: h.CUFE ? 'Documento validado por la DIAN' : 'Manual'
+        },
+        items: detRows
+          .filter(d => String(d.No_Factura) === String(h.No_Factura))
+          .map(d => ({
+            cod:   String(d.Codigo),
+            desc:  d.Descripcion,
+            cant:  parseFloat(d.Cantidad) || 0,
+            vUnit: parseFloat(d.VUnitario) || 0,
+            base:  parseFloat(d.BaseGravable) || 0,
+            inc:   parseFloat(d.INC) || 0,
+            total: parseFloat(d.Total) || 0,
+            cat:   d.Categoria || 'Ocio y otros',
+            nec:   d.TipoGasto || 'Necesario'
+          }))
+      }));
+    }
+
+    // ── Rebuild ingresos ──────────────────────────────────────
+    if(rIng.ok && rIng.rows.length) {
+      STATE.ingresos = rIng.rows.map(r => ({
+        fecha:    String(r.Fecha).split('T')[0],
+        cliente:  r.Cliente,
+        concepto: r.Concepto,
+        cat:      r.Categoria,
+        cuenta:   r.Cuenta,
+        monto:    parseFloat(r.Monto) || 0,
+        obs:      r.Observaciones,
+        id:       r.ID
+      }));
+    }
+
+    // ── Rebuild movimientos ───────────────────────────────────
+    if(rMov.ok && rMov.rows.length) {
+      STATE.movimientos = rMov.rows.map(r => ({
+        fecha:         String(r.Fecha).split('T')[0],
+        tipo:          r.Tipo,
+        desc:          r.Descripcion,
+        origen:        r.Origen,
+        destino:       r.Destino,
+        montoOrigen:   parseFloat(r.MontoOrigen) || 0,
+        montoDestino:  parseFloat(r.MontoDestino) || 0,
+        ref:           r.Referencia,
+        id:            r.ID
+      }));
+    }
+
+    // ── Rebuild insumos ───────────────────────────────────────
+    if(rIns.ok && rIns.rows.length) {
+      STATE.insumos = rIns.rows.map(r => ({
+        proveedor:    r.Proveedor,
+        codigo:       String(r.Codigo),
+        nombre:       r.Nombre,
+        categoria:    r.Categoria,
+        subcategoria: r.Subcategoria,
+        um:           r.UnidadMedida
+      }));
+    }
+
+    setSyncMsg('¡Listo!', 100);
+    saveState();
+    setTimeout(() => { overlay.style.display = 'none'; }, 600);
+    toast('Datos sincronizados desde Sheets ✓', 'success');
+
+  } catch(err) {
+    overlay.style.display = 'none';
+    toast('Error al sincronizar: ' + err.message, 'error');
+    console.error(err);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1937,9 +2062,13 @@ function clearManualForm() {
 }
 
 // ── Boot ──
-loadState();
+loadLocalState();
 preloadDemoInsumos();
-renderDashboard();
+if(STATE.config.scriptUrl) {
+  syncFromSheets().then(() => renderDashboard());
+} else {
+  renderDashboard();
+}
 </script>
 </body>
 </html>
