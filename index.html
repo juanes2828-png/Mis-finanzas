@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title> 💸 - Mis finanzas</title>
+<title>Gestor Financiero · La Curva del Gordo</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:ital,wght@0,300;0,600;0,900;1,300&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1199,17 +1199,11 @@ async function saveFactura() {
 
   // Save to Google Sheets if configured
   if(STATE.config.scriptUrl) {
-    await gsAppendRow('Facturas', [
-      header.numero, header.fecha, header.emisorRS, header.emisorNC,
-      header.emisorNIT, header.emisorDir, header.total, cuenta, header.cufe, obs
-    ]);
-    for(const it of items) {
-      await gsAppendRow('Detalle_Facturas', [
-        header.numero, items.indexOf(it)+1, it.cod, it.desc,
-        it.cant, it.vUnit, it.base, it.inc, it.total, it.cat
-      ]);
-    }
-    toast('Guardado en Google Sheets ✓', 'success');
+    const r = await gasCall('saveFactura', {
+      data: { header: {...header, cuenta, obs}, items }
+    });
+    if(r.ok) toast('Guardado en Google Sheets ✓', 'success');
+    else toast('Error Sheets: ' + r.error, 'error');
   } else {
     toast('Factura guardada localmente', 'info');
   }
