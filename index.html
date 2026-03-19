@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Gestor Financiero · La Curva del Gordo</title>
+<title>💸 · Mis Finanzas</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:ital,wght@0,300;0,600;0,900;1,300&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -220,6 +220,14 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .cat-Ropa{background:rgba(9,121,112,.28);color:var(--muted)}
 .cat-Ajuste{background:rgba(9,121,112,.28);color:var(--muted)}
 .nec-Necesario{background:rgba(74,222,128,.12);color:var(--accent);border:1px solid rgba(74,222,128,.3)}
+.autocomplete-wrap{position:relative}
+.autocomplete-list{position:absolute;top:100%;left:0;right:0;background:var(--panel);border:1px solid var(--accent2);border-radius:0 0 8px 8px;z-index:200;max-height:220px;overflow-y:auto;display:none}
+.autocomplete-list.open{display:block}
+.autocomplete-item{padding:9px 14px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border);transition:background .1s}
+.autocomplete-item:last-child{border-bottom:none}
+.autocomplete-item:hover,.autocomplete-item.selected{background:rgba(96,165,250,.12)}
+.autocomplete-item .ac-rs{color:var(--text);font-weight:500}
+.autocomplete-item .ac-meta{font-size:11px;color:var(--muted);font-family:var(--mono);margin-top:2px}
 .nec-Innecesario{background:rgba(248,113,113,.12);color:var(--red);border:1px solid rgba(248,113,113,.3)}
 </style>
 </head>
@@ -228,7 +236,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 <!-- ═══════ SIDEBAR ═══════ -->
 <div id="sidebar">
   <div class="logo">
-    <h1>Gestor<br>Financiero</h1>
+    <h1>💸 Mis<br>Finanzas</h1>
     <span>v1.0 · Google Sheets</span>
   </div>
   <nav>
@@ -254,6 +262,10 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <div class="nav-item" onclick="goTo('insumos')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
       Maestro Insumos
+    </div>
+    <div class="nav-item" onclick="goTo('terceros')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Terceros
     </div>
     <div class="nav-section">Análisis</div>
     <div class="nav-item" onclick="goTo('reportes')">
@@ -349,10 +361,28 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <!-- EMISOR -->
     <p style="font-size:11px;font-family:var(--mono);color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px">Datos del proveedor</p>
     <div class="form-grid cols-3" style="margin-bottom:18px">
-      <div class="field"><label>Razón Social</label><input type="text" id="mg-emisorRS" placeholder="Nombre del proveedor"></div>
-      <div class="field"><label>Nombre Comercial</label><input type="text" id="mg-emisorNC" placeholder="Nombre comercial"></div>
-      <div class="field"><label>NIT / Cédula</label><input type="text" id="mg-nit" placeholder="900123456-7"></div>
-      <div class="field span-3"><label>Dirección</label><input type="text" id="mg-dir" placeholder="Calle, ciudad"></div>
+      <div class="field autocomplete-wrap">
+        <label>Razón Social <span style="color:var(--accent2);font-size:10px">— escribe para buscar</span></label>
+        <input type="text" id="mg-emisorRS" placeholder="Buscar por nombre o NIT..." autocomplete="off"
+               oninput="acFilter(this.value)" onfocus="acFilter(this.value)" onblur="setTimeout(acClose,200)">
+        <div class="autocomplete-list" id="ac-list"></div>
+      </div>
+      <div class="field"><label>Nombre Comercial</label><input type="text" id="mg-emisorNC" placeholder="Se llena automáticamente"></div>
+      <div class="field"><label>NIT / Cédula</label><input type="text" id="mg-nit" placeholder="Se llena automáticamente"></div>
+      <div class="field"><label>Tipo de tercero</label>
+        <select id="mg-tipo-tercero">
+          <option value="Proveedor">Proveedor</option>
+          <option value="Cliente">Cliente</option>
+          <option value="Otro">Otro</option>
+        </select>
+      </div>
+      <div class="field"><label>Categoría del tercero</label><input type="text" id="mg-cat-tercero" placeholder="Ej: Alimentos, Servicios..."></div>
+      <div class="field"><label>¿Guardar en base de terceros?</label>
+        <select id="mg-guardar-tercero">
+          <option value="si">Sí, guardar / actualizar</option>
+          <option value="no">No, solo este gasto</option>
+        </select>
+      </div>
     </div>
     <!-- FACTURA -->
     <p style="font-size:11px;font-family:var(--mono);color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px">Datos del comprobante</p>
@@ -538,9 +568,11 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <div class="field"><label>Fecha</label><input type="date" id="mov-fecha"></div>
       <div class="field"><label>Tipo de movimiento</label>
         <select id="mov-tipo" onchange="updateMovTipo()">
-          <option value="Transferencia">Transferencia entre cuentas</option>
-          <option value="Pago factura">Pago de factura (CxP)</option>
-          <option value="Cobro cliente">Cobro a cliente (CxC)</option>
+          <option value="Transferencia entre cuentas">Transferencia entre cuentas</option>
+          <option value="Pago deudas">Pago deudas</option>
+          <option value="Préstamo a otros">Préstamo a otros</option>
+          <option value="Me pagan préstamo">Me pagan préstamo</option>
+          <option value="Favor">Favor</option>
         </select>
       </div>
       <div class="field"><label>Monto (COP)</label><input type="number" id="mov-monto" placeholder="0" min="0"></div>
@@ -752,6 +784,45 @@ tr:hover td{background:rgba(255,255,255,.02)}
   </div>
 </div>
 
+<!-- ── TERCEROS ── -->
+<div id="page-terceros" class="page">
+  <div class="page-header"><h2>Base de Terceros</h2><p>Proveedores, clientes y otros contactos con autocompletado en gastos</p></div>
+  <div class="panel">
+    <div class="panel-title">Agregar / Editar Tercero</div>
+    <div class="form-grid cols-3">
+      <div class="field"><label>Razón Social</label><input type="text" id="terc-rs" placeholder="Nombre completo o razón social"></div>
+      <div class="field"><label>Nombre Comercial</label><input type="text" id="terc-nc" placeholder="Nombre comercial"></div>
+      <div class="field"><label>NIT / Cédula</label><input type="text" id="terc-nit" placeholder="900123456-7"></div>
+      <div class="field"><label>Tipo</label>
+        <select id="terc-tipo">
+          <option value="Proveedor">Proveedor</option>
+          <option value="Cliente">Cliente</option>
+          <option value="Otro">Otro</option>
+        </select>
+      </div>
+      <div class="field"><label>Categoría</label><input type="text" id="terc-cat" placeholder="Ej: Alimentos, Servicios..."></div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="saveTerceroForm()">Guardar Tercero</button>
+      <button class="btn btn-secondary" onclick="clearTerceroForm()">Limpiar</button>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="panel-title">Directorio de Terceros <span class="badge" id="terc-count-badge">0 registros</span></div>
+    <div style="margin-bottom:12px">
+      <input type="text" id="terc-search" placeholder="Buscar por nombre, NIT o tipo..."
+        style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;width:100%;outline:none"
+        oninput="renderTerceros()">
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Razón Social</th><th>Nombre Comercial</th><th>NIT</th><th>Tipo</th><th>Categoría</th><th>Acciones</th></tr></thead>
+        <tbody id="tbl-terceros"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <!-- ── CONFIG ── -->
 <div id="page-config" class="page">
   <div class="page-header"><h2>Configuración</h2><p>Conecta con Google Sheets para sincronización en la nube</p></div>
@@ -899,10 +970,11 @@ tr:hover td{background:rgba(255,255,255,.02)}
 // ═══════════════════════════════════════════════════════════════
 const STATE = {
   config: { scriptUrl: '' },
-  facturas: [],       // [{header, items}]
+  facturas: [],
   ingresos: [],
   movimientos: [],
   insumos: [],
+  terceros: [],       // [{razonSocial, nomComercial, nit, tipo, categoria}]
   currentInvoice: null,
   editCatIdx: null
 };
@@ -953,9 +1025,11 @@ async function syncFromSheets() {
     const rIng = await gasGet({ action:'getAll', sheet:'Ingresos' });
     setSyncMsg('Leyendo movimientos...', 62);
     const rMov = await gasGet({ action:'getAll', sheet:'Movimientos' });
-    setSyncMsg('Leyendo catálogo de insumos...', 78);
+    setSyncMsg('Leyendo catálogo de insumos...', 72);
     const rIns = await gasGet({ action:'getAll', sheet:'Insumos' });
-    setSyncMsg('Procesando datos...', 90);
+    setSyncMsg('Leyendo base de terceros...', 84);
+    const rTerc = await gasGet({ action:'getAll', sheet:'Terceros' });
+    setSyncMsg('Procesando datos...', 92);
 
     // ── Rebuild facturas ──────────────────────────────────────
     if(rFac.ok && rFac.rows.length) {
@@ -1032,6 +1106,17 @@ async function syncFromSheets() {
       }));
     }
 
+    // ── Rebuild terceros ─────────────────────────────────
+    if(rTerc && rTerc.ok && rTerc.rows && rTerc.rows.length) {
+      STATE.terceros = rTerc.rows.map(r => ({
+        razonSocial:  r.RazonSocial  || '',
+        nomComercial: r.NomComercial || '',
+        nit:          String(r.NIT || ''),
+        tipo:         r.Tipo         || 'Proveedor',
+        categoria:    r.Categoria    || ''
+      }));
+    }
+
     setSyncMsg('¡Listo!', 100);
     saveState();
     setTimeout(() => { overlay.style.display = 'none'; }, 600);
@@ -1060,6 +1145,7 @@ function goTo(page) {
   if(page === 'movimientos') renderHistMovimientos();
   if(page === 'insumos')   renderInsumos();
   if(page === 'reportes')  renderReportes();
+  if(page === 'terceros')   renderTerceros();
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1824,9 +1910,11 @@ function clearLocalData() {
 function updateMovTipo() {
   const tipo = document.getElementById('mov-tipo').value;
   document.getElementById('mov-desc').placeholder =
-    tipo === 'Transferencia' ? 'Ej: Traslado a cuenta de ahorros' :
-    tipo === 'Pago factura'  ? 'Ej: Pago factura FEC-19394' :
-    'Ej: Cobro cliente Juan Montoya';
+    tipo === 'Transferencia entre cuentas' ? 'Ej: Traslado a cuenta de ahorros' :
+    tipo === 'Pago deudas'                 ? 'Ej: Cuota préstamo banco / tarjeta' :
+    tipo === 'Préstamo a otros'            ? 'Ej: Préstamo a Juan Pérez' :
+    tipo === 'Me pagan préstamo'           ? 'Ej: Juan Pérez me devuelve préstamo' :
+    'Ej: Favor a / de ...';
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2004,10 +2092,13 @@ function updateManualTotal() {
 }
 
 async function saveGastoManual() {
-  const emisorRS = document.getElementById('mg-emisorRS').value.trim();
-  const emisorNC = document.getElementById('mg-emisorNC').value.trim();
-  const nit      = document.getElementById('mg-nit').value.trim();
-  const dir      = document.getElementById('mg-dir').value.trim();
+  const emisorRS  = document.getElementById('mg-emisorRS').value.trim();
+  const emisorNC  = document.getElementById('mg-emisorNC').value.trim();
+  const nit       = document.getElementById('mg-nit').value.trim();
+  const dir       = document.getElementById('mg-dir').value.trim();
+  const tipoTerc  = document.getElementById('mg-tipo-tercero').value;
+  const catTerc   = document.getElementById('mg-cat-tercero').value.trim();
+  const guardarT  = document.getElementById('mg-guardar-tercero').value;
   const numero   = document.getElementById('mg-numero').value.trim() || ('MAN-' + Date.now());
   const fecha    = document.getElementById('mg-fecha').value;
   const cuenta   = document.getElementById('mg-cuenta').value;
@@ -2051,7 +2142,7 @@ async function saveGastoManual() {
 }
 
 function clearManualForm() {
-  ['mg-emisorRS','mg-emisorNC','mg-nit','mg-dir','mg-numero','mg-obs'].forEach(id => {
+  ['mg-emisorRS','mg-emisorNC','mg-nit','mg-dir','mg-numero','mg-obs','mg-cat-tercero'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('mg-fecha').value = new Date().toISOString().split('T')[0];
@@ -2059,6 +2150,142 @@ function clearManualForm() {
   manualItems = [];
   addManualItem();
   updateManualTotal();
+}
+
+
+
+// ═══════════════════════════════════════════════════════════════
+// TERCEROS — página de gestión
+// ═══════════════════════════════════════════════════════════════
+function renderTerceros() {
+  const q = (document.getElementById('terc-search')?.value || '').toLowerCase();
+  const filtered = STATE.terceros.filter(t =>
+    !q ||
+    (t.razonSocial  && t.razonSocial.toLowerCase().includes(q))  ||
+    (t.nomComercial && t.nomComercial.toLowerCase().includes(q)) ||
+    (t.nit          && t.nit.toLowerCase().includes(q))          ||
+    (t.tipo         && t.tipo.toLowerCase().includes(q))
+  );
+  const badge = document.getElementById('terc-count-badge');
+  if (badge) badge.textContent = STATE.terceros.length + ' registros';
+  const tbody = document.getElementById('tbl-terceros');
+  if (!tbody) return;
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty"><p>Sin terceros registrados</p></td></tr>';
+    return;
+  }
+  tbody.innerHTML = filtered.map((t, i) => {
+    const idx = STATE.terceros.indexOf(t);
+    const tipoBadge = t.tipo === 'Proveedor' ? 'chip-orange' : t.tipo === 'Cliente' ? 'chip-green' : 'chip-gray';
+    return '<tr>' +
+      '<td><strong>' + (t.razonSocial || '—') + '</strong></td>' +
+      '<td>' + (t.nomComercial || '—') + '</td>' +
+      '<td style="font-family:var(--mono);font-size:12px">' + (t.nit || '—') + '</td>' +
+      '<td><span class="chip ' + tipoBadge + '">' + (t.tipo || '—') + '</span></td>' +
+      '<td>' + (t.categoria || '—') + '</td>' +
+      '<td>' +
+        '<button class="btn btn-sm btn-outline" onclick="editTercero(' + idx + ')">Editar</button> ' +
+        '<button class="btn btn-sm btn-danger" onclick="deleteTercero(' + idx + ')">✕</button>' +
+      '</td>' +
+    '</tr>';
+  }).join('');
+}
+
+async function saveTerceroForm() {
+  const rs  = document.getElementById('terc-rs').value.trim();
+  const nc  = document.getElementById('terc-nc').value.trim();
+  const nit = document.getElementById('terc-nit').value.trim();
+  const tipo = document.getElementById('terc-tipo').value;
+  const cat = document.getElementById('terc-cat').value.trim();
+  if (!rs && !nc) { toast('Ingresa al menos la razón social o nombre comercial', 'error'); return; }
+  await saveTercero({ razonSocial: rs, nomComercial: nc, nit, tipo, categoria: cat });
+  toast('Tercero guardado ✓', 'success');
+  clearTerceroForm();
+  renderTerceros();
+}
+
+function editTercero(idx) {
+  const t = STATE.terceros[idx];
+  document.getElementById('terc-rs').value   = t.razonSocial  || '';
+  document.getElementById('terc-nc').value   = t.nomComercial || '';
+  document.getElementById('terc-nit').value  = t.nit          || '';
+  document.getElementById('terc-tipo').value = t.tipo         || 'Proveedor';
+  document.getElementById('terc-cat').value  = t.categoria    || '';
+}
+
+async function deleteTercero(idx) {
+  if (!confirm('¿Eliminar este tercero?')) return;
+  STATE.terceros.splice(idx, 1);
+  saveState();
+  renderTerceros();
+  toast('Tercero eliminado', 'info');
+}
+
+function clearTerceroForm() {
+  ['terc-rs','terc-nc','terc-nit','terc-cat'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  const tipo = document.getElementById('terc-tipo');
+  if (tipo) tipo.value = 'Proveedor';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// AUTOCOMPLETE TERCEROS
+// ═══════════════════════════════════════════════════════════════
+function acFilter(q) {
+  const list = document.getElementById('ac-list');
+  if (!q || q.length < 1) { acClose(); return; }
+  q = q.toLowerCase();
+  const matches = STATE.terceros.filter(t =>
+    (t.razonSocial  && t.razonSocial.toLowerCase().includes(q)) ||
+    (t.nomComercial && t.nomComercial.toLowerCase().includes(q)) ||
+    (t.nit          && t.nit.toLowerCase().includes(q))
+  ).slice(0, 10);
+
+  if (!matches.length) { acClose(); return; }
+
+  list.innerHTML = matches.map((t, i) => `
+    <div class="autocomplete-item" onmousedown="acSelect(${STATE.terceros.indexOf(t)})">
+      <div class="ac-rs">${t.razonSocial || t.nomComercial}</div>
+      <div class="ac-meta">${t.nomComercial ? t.nomComercial + '  ·  ' : ''}NIT: ${t.nit || '—'}  ·  ${t.tipo || ''}  ${t.categoria ? '·  ' + t.categoria : ''}</div>
+    </div>`).join('');
+  list.classList.add('open');
+}
+
+function acSelect(idx) {
+  const t = STATE.terceros[idx];
+  if (!t) return;
+  document.getElementById('mg-emisorRS').value       = t.razonSocial  || '';
+  document.getElementById('mg-emisorNC').value       = t.nomComercial || '';
+  document.getElementById('mg-nit').value            = t.nit          || '';
+  document.getElementById('mg-tipo-tercero').value   = t.tipo         || 'Proveedor';
+  document.getElementById('mg-cat-tercero').value    = t.categoria    || '';
+  document.getElementById('mg-guardar-tercero').value = 'si';
+  acClose();
+}
+
+function acClose() {
+  const list = document.getElementById('ac-list');
+  if (list) list.classList.remove('open');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SAVE / SYNC TERCEROS
+// ═══════════════════════════════════════════════════════════════
+async function saveTercero(data) {
+  // Update local state
+  const existing = STATE.terceros.findIndex(t =>
+    t.nit && t.nit === data.nit ||
+    t.razonSocial.toLowerCase() === data.razonSocial.toLowerCase()
+  );
+  if (existing >= 0) STATE.terceros[existing] = data;
+  else STATE.terceros.push(data);
+  saveState();
+  // Sync to Sheets
+  if (STATE.config.scriptUrl) {
+    await gasCall('saveTercero', { data });
+  }
 }
 
 // ── Boot ──
