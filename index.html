@@ -2281,10 +2281,10 @@ async function saveGastoManual() {
   const emisorRS  = document.getElementById('mg-emisorRS').value.trim();
   const emisorNC  = document.getElementById('mg-emisorNC').value.trim();
   const nit       = document.getElementById('mg-nit').value.trim();
-  const dir       = document.getElementById('mg-dir').value.trim();
-  const tipoTerc  = document.getElementById('mg-tipo-tercero').value;
-  const catTerc   = document.getElementById('mg-cat-tercero').value.trim();
-  const guardarT  = document.getElementById('mg-guardar-tercero').value;
+  const dir       = document.getElementById('mg-dir')?.value?.trim() || '';
+  const tipoTerc  = document.getElementById('mg-tipo-tercero')?.value || 'Proveedor';
+  const catTerc   = document.getElementById('mg-cat-tercero')?.value?.trim() || '';
+  const guardarT  = document.getElementById('mg-guardar-tercero')?.value || 'no';
   const numero   = document.getElementById('mg-numero').value.trim() || ('MAN-' + Date.now());
   const fecha    = document.getElementById('mg-fecha').value;
   const cuenta   = document.getElementById('mg-cuenta').value;
@@ -2328,7 +2328,7 @@ async function saveGastoManual() {
 }
 
 function clearManualForm() {
-  ['mg-emisorRS','mg-emisorNC','mg-nit','mg-dir','mg-numero','mg-obs','mg-cat-tercero'].forEach(id => {
+  ['mg-emisorRS','mg-emisorNC','mg-nit','mg-numero','mg-obs','mg-cat-tercero'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('mg-fecha').value = new Date().toISOString().split('T')[0];
