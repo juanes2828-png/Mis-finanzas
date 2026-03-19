@@ -296,22 +296,63 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <h2>Dashboard</h2>
     <p id="dash-period">Resumen del período actual</p>
   </div>
-  <div class="cards" id="dash-cards">
-    <div class="card"><div class="card-label">Ingresos (mes)</div><div class="card-value pos" id="d-ingresos">$0</div><div class="card-sub">Total positivo</div></div>
-    <div class="card"><div class="card-label">Gastos (mes)</div><div class="card-value neg" id="d-gastos">$0</div><div class="card-sub">Facturas cargadas</div></div>
-    <div class="card"><div class="card-label">Balance neto</div><div class="card-value neu" id="d-balance">$0</div><div class="card-sub">Ingresos − Gastos</div></div>
-    <div class="card"><div class="card-label">Facturas cargadas</div><div class="card-value neu" id="d-nfact">0</div><div class="card-sub">Este mes</div></div>
+
+  <!-- Filtros -->
+  <div class="panel" style="margin-bottom:20px">
+    <div style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap">
+      <div class="field" style="flex:0 0 auto">
+        <label>Desde</label>
+        <input type="date" id="dash-desde" style="width:140px" onchange="renderDashboard()">
+      </div>
+      <div class="field" style="flex:0 0 auto">
+        <label>Hasta</label>
+        <input type="date" id="dash-hasta" style="width:140px" onchange="renderDashboard()">
+      </div>
+      <div class="field" style="flex:1;min-width:200px">
+        <label>Cuenta / Medio de pago</label>
+        <select id="dash-cuenta" onchange="renderDashboard()" style="width:100%">
+          <option value="">— Todas las cuentas —</option>
+        </select>
+      </div>
+      <div style="margin-bottom:1px">
+        <button class="btn btn-outline btn-sm" onclick="resetDashFilters()">Limpiar filtros</button>
+      </div>
+    </div>
   </div>
+
+  <!-- KPIs -->
+  <div class="cards" id="dash-cards">
+    <div class="card"><div class="card-label">Ingresos</div><div class="card-value pos" id="d-ingresos">$0</div><div class="card-sub">En el período</div></div>
+    <div class="card"><div class="card-label">Gastos</div><div class="card-value neg" id="d-gastos">$0</div><div class="card-sub">En el período</div></div>
+    <div class="card"><div class="card-label">Balance neto</div><div class="card-value neu" id="d-balance">$0</div><div class="card-sub">Ingresos − Gastos</div></div>
+    <div class="card"><div class="card-label">Facturas</div><div class="card-value neu" id="d-nfact">0</div><div class="card-sub">En el período</div></div>
+  </div>
+
+  <!-- Fila 1: torta Ingresos vs Gastos + evolución mensual -->
   <div class="grid-2">
     <div class="panel">
-      <div class="panel-title">Gastos por Categoría <span class="badge">mes actual</span></div>
-      <div class="chart-box"><canvas id="chart-cat"></canvas></div>
+      <div class="panel-title">Ingresos vs Gastos <span class="badge" id="dash-badge-rel">período</span></div>
+      <div class="chart-box"><canvas id="chart-rel"></canvas></div>
     </div>
     <div class="panel">
       <div class="panel-title">Evolución Mensual</div>
       <div class="chart-box"><canvas id="chart-evol"></canvas></div>
     </div>
   </div>
+
+  <!-- Fila 2: saldos por cuenta + gastos por categoría -->
+  <div class="grid-2">
+    <div class="panel">
+      <div class="panel-title">Saldos por Cuenta <span class="badge">débito · crédito</span></div>
+      <div class="chart-box" style="height:260px"><canvas id="chart-saldos"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Gastos por Categoría</div>
+      <div class="chart-box" style="height:260px"><canvas id="chart-cat"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Últimas transacciones -->
   <div class="panel">
     <div class="panel-title">Últimas transacciones</div>
     <div class="tbl-wrap">
@@ -992,6 +1033,10 @@ function loadLocalState() {
   const today = new Date().toISOString().split('T')[0];
   document.getElementById('ing-fecha').value = today;
   document.getElementById('mg-fecha').value  = today;
+  if(document.getElementById('dash-desde') && !document.getElementById('dash-desde').value) {
+    document.getElementById('dash-desde').value = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+    document.getElementById('dash-hasta').value  = today;
+  }
   document.getElementById('mov-fecha').value = today;
   const now = new Date();
   document.getElementById('rep-desde').value = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
@@ -1603,76 +1648,218 @@ function deleteInsumo(idx) {
 // DASHBOARD
 // ═══════════════════════════════════════════════════════════════
 let chartCat, chartEvol;
-function renderDashboard() {
+// ── Clasificación de cuentas ────────────────────────────────
+// DÉBITO:  Efectivo, Débito Bancolombia, Débito Davivienda, Nubank,
+//          Nequi, Daviplata, Claro Pay, Préstamos, Inversiones
+// CRÉDITO: Visa signature, Mastercard black, Terpel Colpatria, Préstamos personales
+const CUENTAS_CREDITO = ['Visa signature','Mastercard black','Terpel Colpatria','Préstamos personales'];
+
+let chartCat, chartEvol, chartRel, chartSaldos;
+
+function initDashFilters() {
+  const now   = new Date();
+  const today = now.toISOString().split('T')[0];
+  const first = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+  const desde = document.getElementById('dash-desde');
+  const hasta  = document.getElementById('dash-hasta');
+  if (!desde.value) desde.value = first;
+  if (!hasta.value)  hasta.value  = today;
+  // Poblar selector de cuentas
+  const sel = document.getElementById('dash-cuenta');
+  const current = sel.value;
+  const cuentas = new Set();
+  STATE.facturas.forEach(f   => { if(f.header.cuenta) cuentas.add(f.header.cuenta); });
+  STATE.ingresos.forEach(i   => { if(i.cuenta)        cuentas.add(i.cuenta); });
+  STATE.movimientos.forEach(mv => {
+    if(mv.origen)  cuentas.add(mv.origen);
+    if(mv.destino) cuentas.add(mv.destino);
+  });
+  sel.innerHTML = '<option value="">— Todas las cuentas —</option>' +
+    [...cuentas].sort().map(c => '<option value="' + c + '"' + (c===current?' selected':'') + '>' + c + '</option>').join('');
+}
+
+function resetDashFilters() {
   const now = new Date();
-  const y = now.getFullYear(), m = now.getMonth();
-  const mesFacturas = STATE.facturas.filter(f => {
-    const d = new Date(f.header.fecha);
-    return d.getFullYear() === y && d.getMonth() === m;
-  });
-  const mesIngresos = STATE.ingresos.filter(i => {
-    const d = new Date(i.fecha);
-    return d.getFullYear() === y && d.getMonth() === m;
-  });
-  const totalGastos   = mesFacturas.reduce((s,f) => s + f.header.total, 0);
-  const totalIngresos = mesIngresos.reduce((s,i) => s + i.monto, 0);
+  document.getElementById('dash-desde').value = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+  document.getElementById('dash-hasta').value  = now.toISOString().split('T')[0];
+  document.getElementById('dash-cuenta').value = '';
+  renderDashboard();
+}
+
+function renderDashboard() {
+  initDashFilters();
+  const desde  = document.getElementById('dash-desde')?.value  || '';
+  const hasta   = document.getElementById('dash-hasta')?.value  || '';
+  const cuenta  = document.getElementById('dash-cuenta')?.value || '';
+
+  // ── Filtrar datos ─────────────────────────────────────────
+  const facsFilt = STATE.facturas.filter(f =>
+    (!desde || f.header.fecha >= desde) && (!hasta || f.header.fecha <= hasta) &&
+    (!cuenta || f.header.cuenta === cuenta)
+  );
+  const ingFilt = STATE.ingresos.filter(i =>
+    (!desde || i.fecha >= desde) && (!hasta || i.fecha <= hasta) &&
+    (!cuenta || i.cuenta === cuenta)
+  );
+  const movFilt = STATE.movimientos.filter(mv =>
+    (!desde || mv.fecha >= desde) && (!hasta || mv.fecha <= hasta) &&
+    (!cuenta || mv.origen === cuenta || mv.destino === cuenta)
+  );
+
+  const totalGastos   = facsFilt.reduce((s,f) => s + f.header.total, 0);
+  const totalIngresos = ingFilt.reduce((s,i) => s + i.monto, 0);
+
+  document.getElementById('dash-period').textContent = desde && hasta ? desde + '  →  ' + hasta : 'Período filtrado';
+  const badgeRel = document.getElementById('dash-badge-rel');
+  if (badgeRel) badgeRel.textContent = cuenta || 'todas las cuentas';
+
+  // ── KPIs ─────────────────────────────────────────────────
   document.getElementById('d-ingresos').textContent = fmtCOP(totalIngresos);
   document.getElementById('d-gastos').textContent   = fmtCOP(totalGastos);
   document.getElementById('d-balance').textContent  = fmtCOP(totalIngresos - totalGastos);
-  document.getElementById('d-nfact').textContent    = mesFacturas.length;
-  document.getElementById('dash-period').textContent = `Mes: ${now.toLocaleString('es-CO',{month:'long',year:'numeric'})}`;
+  document.getElementById('d-nfact').textContent    = facsFilt.length;
 
-  // Last transactions
+  // ── Últimas transacciones ─────────────────────────────────
   const txns = [
-    ...STATE.facturas.map(f => ({fecha:f.header.fecha, tipo:'Gasto', concepto:f.header.emisorNC||f.header.emisorRS, cuenta:f.header.cuenta, monto:-f.header.total})),
-    ...STATE.ingresos.map(i => ({fecha:i.fecha, tipo:'Ingreso', concepto:i.concepto, cuenta:i.cuenta, monto:+i.monto})),
-    ...STATE.movimientos.map(mv => ({fecha:mv.fecha, tipo:'Movimiento', concepto:mv.desc||mv.tipo, cuenta:mv.origen+'→'+mv.destino, monto:mv.montoDestino}))
+    ...facsFilt.map(f  => ({fecha:f.header.fecha, tipo:'Gasto',      concepto:f.header.emisorNC||f.header.emisorRS, cuenta:f.header.cuenta, monto:-f.header.total})),
+    ...ingFilt.map(i   => ({fecha:i.fecha,         tipo:'Ingreso',    concepto:i.concepto,                           cuenta:i.cuenta,         monto:+i.monto})),
+    ...movFilt.map(mv  => ({fecha:mv.fecha,         tipo:'Movimiento', concepto:mv.desc||mv.tipo,                     cuenta:mv.origen+'→'+mv.destino, monto:mv.montoDestino}))
   ].sort((a,b) => b.fecha.localeCompare(a.fecha)).slice(0,8);
 
-  document.getElementById('dash-txn').innerHTML = txns.length ? txns.map(t => `
-    <tr>
-      <td>${t.fecha}</td>
-      <td><span class="chip ${t.tipo==='Gasto'?'chip-red':t.tipo==='Ingreso'?'chip-green':'chip-orange'}">${t.tipo}</span></td>
-      <td>${t.concepto}</td>
-      <td style="color:var(--muted)">${t.cuenta}</td>
-      <td class="${t.monto>=0?'amount-pos':'amount-neg'}">${t.monto>=0?'+':''}${fmtCOP(Math.abs(t.monto))}</td>
-    </tr>`).join('') : '<tr><td colspan="5" class="empty"><p>Sin transacciones</p></td></tr>';
+  document.getElementById('dash-txn').innerHTML = txns.length ? txns.map(t =>
+    '<tr>' +
+    '<td>' + t.fecha + '</td>' +
+    '<td><span class="chip ' + (t.tipo==='Gasto'?'chip-red':t.tipo==='Ingreso'?'chip-green':'chip-orange') + '">' + t.tipo + '</span></td>' +
+    '<td>' + t.concepto + '</td>' +
+    '<td style="color:var(--muted)">' + t.cuenta + '</td>' +
+    '<td class="' + (t.monto>=0?'amount-pos':'amount-neg') + '">' + (t.monto>=0?'+':'') + fmtCOP(Math.abs(t.monto)) + '</td>' +
+    '</tr>'
+  ).join('') : '<tr><td colspan="5" class="empty"><p>Sin transacciones en el período</p></td></tr>';
 
-  // Chart: category
-  const catData = {};
-  mesFacturas.forEach(f => f.items.forEach(it => {
-    catData[it.cat] = (catData[it.cat]||0) + it.total;
-  }));
-  const cats = Object.keys(catData);
-  const colors = ['#4ade80','#60a5fa','#f472b6','#fb923c','#a78bfa','#34d399'];
-  if(chartCat) chartCat.destroy();
-  const ctxCat = document.getElementById('chart-cat').getContext('2d');
-  chartCat = new Chart(ctxCat, {
-    type: 'doughnut',
-    data: { labels: cats, datasets:[{ data: cats.map(c=>catData[c]), backgroundColor: colors, borderWidth: 0 }] },
-    options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ labels:{ color:'#9ca3af', font:{size:11} } } } }
+  // ── Gráfica 1: Torta Ingresos vs Gastos ──────────────────
+  if(chartRel) chartRel.destroy();
+  chartRel = new Chart(document.getElementById('chart-rel').getContext('2d'), {
+    type: 'pie',
+    data: {
+      labels: ['Ingresos','Gastos'],
+      datasets:[{ data:[totalIngresos, totalGastos],
+        backgroundColor:['rgba(74,222,128,.8)','rgba(248,113,113,.8)'],
+        borderColor:['#4ade80','#f87171'], borderWidth:2 }]
+    },
+    options: { responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{ labels:{ color:'#9ca3af', font:{size:12}, padding:16 } },
+        tooltip:{ callbacks:{ label: ctx => ' ' + fmtCOP(ctx.parsed) +
+          '  (' + (totalIngresos+totalGastos>0 ? Math.round(ctx.parsed/(totalIngresos+totalGastos)*100) : 0) + '%)' } }
+      }
+    }
   });
 
-  // Chart: monthly evolution (last 6 months)
-  const months = [];
-  const gastosM = [], ingresosM = [];
+  // ── Gráfica 2: Evolución mensual ─────────────────────────
+  const now = new Date();
+  const y = now.getFullYear(), mo = now.getMonth();
+  const months = [], gastosM = [], ingresosM = [];
   for(let i=5; i>=0; i--) {
-    const d = new Date(y, m-i, 1);
+    const d  = new Date(y, mo-i, 1);
     const my = d.getFullYear(), mm = d.getMonth();
     months.push(d.toLocaleString('es-CO',{month:'short'}));
-    gastosM.push(STATE.facturas.filter(f=>{const fd=new Date(f.header.fecha);return fd.getFullYear()===my&&fd.getMonth()===mm;}).reduce((s,f)=>s+f.header.total,0));
-    ingresosM.push(STATE.ingresos.filter(ing=>{const fd=new Date(ing.fecha);return fd.getFullYear()===my&&fd.getMonth()===mm;}).reduce((s,ing)=>s+ing.monto,0));
+    gastosM.push(STATE.facturas.filter(f=>{
+      const fd=new Date(f.header.fecha);
+      return fd.getFullYear()===my && fd.getMonth()===mm && (!cuenta||f.header.cuenta===cuenta);
+    }).reduce((s,f)=>s+f.header.total,0));
+    ingresosM.push(STATE.ingresos.filter(ig=>{
+      const fd=new Date(ig.fecha);
+      return fd.getFullYear()===my && fd.getMonth()===mm && (!cuenta||ig.cuenta===cuenta);
+    }).reduce((s,ig)=>s+ig.monto,0));
   }
   if(chartEvol) chartEvol.destroy();
   chartEvol = new Chart(document.getElementById('chart-evol').getContext('2d'), {
     type: 'bar',
     data: { labels: months, datasets:[
-      { label:'Ingresos', data:ingresosM, backgroundColor:'rgba(74,222,128,.7)' },
-      { label:'Gastos',   data:gastosM,   backgroundColor:'rgba(248,113,113,.7)' }
+      { label:'Ingresos', data:ingresosM, backgroundColor:'rgba(74,222,128,.7)', borderRadius:4 },
+      { label:'Gastos',   data:gastosM,   backgroundColor:'rgba(248,113,113,.7)', borderRadius:4 }
     ]},
     options: { responsive:true, maintainAspectRatio:false,
-      scales:{ x:{ticks:{color:'#6b7280'},grid:{color:'#1c2030'}}, y:{ticks:{color:'#6b7280'},grid:{color:'#1c2030'}} },
+      scales:{
+        x:{ ticks:{color:'#6b7280'}, grid:{color:'#1c2030'} },
+        y:{ ticks:{color:'#6b7280', callback: v => '$'+(v/1000).toFixed(0)+'k'}, grid:{color:'#252a3a'} }
+      },
       plugins:{ legend:{ labels:{ color:'#9ca3af', font:{size:11} } } }
+    }
+  });
+
+  // ── Gráfica 3: Saldos por cuenta ─────────────────────────
+  // Saldo = ingresos + mov_entrada - gastos - mov_salida
+  // Crédito: saldo positivo = deuda pendiente
+  const allCuentas = new Set();
+  STATE.facturas.forEach(f    => { if(f.header.cuenta) allCuentas.add(f.header.cuenta); });
+  STATE.ingresos.forEach(i    => { if(i.cuenta)        allCuentas.add(i.cuenta); });
+  STATE.movimientos.forEach(mv => {
+    if(mv.origen)  allCuentas.add(mv.origen);
+    if(mv.destino) allCuentas.add(mv.destino);
+  });
+
+  const saldoMap = {};
+  [...allCuentas].forEach(c => {
+    const isCredito  = CUENTAS_CREDITO.includes(c);
+    const gastosCta  = STATE.facturas.filter(f   => f.header.cuenta === c).reduce((s,f)  => s + f.header.total, 0);
+    const ingresosCta= STATE.ingresos.filter(i   => i.cuenta         === c).reduce((s,i)  => s + i.monto, 0);
+    const movSalida  = STATE.movimientos.filter(mv=> mv.origen        === c).reduce((s,mv) => s + Math.abs(mv.montoOrigen), 0);
+    const movEntrada = STATE.movimientos.filter(mv=> mv.destino       === c).reduce((s,mv) => s + mv.montoDestino, 0);
+    const saldo = isCredito
+      ? -(gastosCta + movSalida - ingresosCta - movEntrada)
+      :  (ingresosCta + movEntrada - gastosCta - movSalida);
+    saldoMap[c] = { saldo, isCredito };
+  });
+
+  const ctaLabels = Object.keys(saldoMap).sort();
+  const ctaData   = ctaLabels.map(c => saldoMap[c].saldo);
+  const ctaColors = ctaLabels.map(c =>
+    saldoMap[c].isCredito
+      ? (saldoMap[c].saldo >= 0 ? 'rgba(74,222,128,.75)' : 'rgba(248,113,113,.8)')
+      : (saldoMap[c].saldo >= 0 ? 'rgba(96,165,250,.75)' : 'rgba(251,146,60,.8)')
+  );
+
+  if(chartSaldos) chartSaldos.destroy();
+  if(ctaLabels.length) {
+    chartSaldos = new Chart(document.getElementById('chart-saldos').getContext('2d'), {
+      type: 'bar',
+      data: { labels: ctaLabels, datasets:[{
+        label:'Saldo neto (COP)', data:ctaData,
+        backgroundColor:ctaColors, borderRadius:4, borderSkipped:false
+      }]},
+      options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
+        scales:{
+          x:{ ticks:{color:'#6b7280', callback: v => '$'+(v/1000).toFixed(0)+'k'}, grid:{color:'#252a3a'}, border:{dash:[4,4]} },
+          y:{ ticks:{color:'#9ca3af', font:{size:11}}, grid:{display:false} }
+        },
+        plugins:{
+          legend:{display:false},
+          tooltip:{ callbacks:{ label: ctx => {
+            const c   = ctaLabels[ctx.dataIndex];
+            const tipo = saldoMap[c].isCredito ? '(Crédito)' : '(Débito)';
+            return ' ' + tipo + '  ' + fmtCOP(ctx.parsed.x);
+          }}}
+        }
+      }
+    });
+  }
+
+  // ── Gráfica 4: Dona gastos por categoría ─────────────────
+  const catData = {};
+  facsFilt.forEach(f => f.items.forEach(it => { catData[it.cat] = (catData[it.cat]||0) + it.total; }));
+  const cats   = Object.keys(catData).sort((a,b) => catData[b]-catData[a]);
+  const colors = ['#60a5fa','#4ade80','#f472b6','#fb923c','#a78bfa','#34d399','#fbbf24','#f87171','#38bdf8','#c084fc'];
+  if(chartCat) chartCat.destroy();
+  chartCat = new Chart(document.getElementById('chart-cat').getContext('2d'), {
+    type: 'doughnut',
+    data: { labels:cats, datasets:[{ data:cats.map(c=>catData[c]),
+      backgroundColor:colors.slice(0,cats.length), borderWidth:0 }] },
+    options: { responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{ position:'right', labels:{ color:'#9ca3af', font:{size:10}, boxWidth:12, padding:8 } },
+        tooltip:{ callbacks:{ label: ctx => ' ' + ctx.label + ': ' + fmtCOP(ctx.parsed) } }
+      }
     }
   });
 }
