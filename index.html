@@ -1015,7 +1015,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 <!-- ── TOAST ── -->
 <div id="sync-overlay" class="sync-overlay" style="display:none">
   <div class="spinner"></div>
-  <h3>Sincronizando datos</h3>
+  <h3 id="sync-title">Sincronizando datos</h3>
   <p id="sync-msg">Conectando con Google Sheets...</p>
   <div class="sync-bar"><div class="sync-bar-fill" id="sync-bar-fill"></div></div>
 </div>
@@ -1138,8 +1138,24 @@ function saveState() {
 
 // ─── Sync from Sheets ────────────────────────────────────────
 function setSyncMsg(msg, pct) {
-  document.getElementById('sync-msg').textContent = msg;
+  document.getElementById('sync-msg').textContent      = msg;
   document.getElementById('sync-bar-fill').style.width = pct + '%';
+}
+
+function showProgress(title, msg, pct) {
+  const t = document.getElementById('sync-title');
+  if (t) t.textContent = title || 'Guardando...';
+  setSyncMsg(msg || '', pct || 0);
+  document.getElementById('sync-overlay').style.display = 'flex';
+}
+
+function hideProgress(delay) {
+  setTimeout(() => {
+    document.getElementById('sync-overlay').style.display = 'none';
+    // Reset title for next sync
+    const t = document.getElementById('sync-title');
+    if (t) t.textContent = 'Sincronizando datos';
+  }, delay || 0);
 }
 
 async function syncFromSheets() {
@@ -1545,24 +1561,34 @@ async function saveFactura() {
   const cuenta = document.getElementById('fact-cuenta').value;
   const obs    = document.getElementById('fact-obs').value;
 
-  // Check duplicate
   if(STATE.facturas.find(f => f.header.numero === header.numero)) {
     toast('Esta factura ya está registrada', 'error'); return;
   }
 
-  const record = { header: {...header, cuenta, obs, fechaRegistro: new Date().toISOString()}, items };
-  STATE.facturas.push(record);
-  saveState();
+  showProgress('Guardando factura', 'Procesando ' + header.numero + '...', 10);
+  try {
+    const record = { header: {...header, cuenta, obs, fechaRegistro: new Date().toISOString()}, items };
+    STATE.facturas.push(record);
+    saveState();
+    setSyncMsg('Guardando encabezado...', 35);
 
-  // Save to Google Sheets if configured
-  if(STATE.config.scriptUrl) {
-    const r = await gasCall('saveFactura', {
-      data: { header: {...header, cuenta, obs}, items }
-    });
-    if(r.ok) toast('Guardado en Google Sheets ✓', 'success');
-    else toast('Error Sheets: ' + r.error, 'error');
-  } else {
-    toast('Factura guardada localmente', 'info');
+    if(STATE.config.scriptUrl) {
+      setSyncMsg('Enviando ítems a Sheets...', 65);
+      const r = await gasCall('saveFactura', {
+        data: { header: {...header, cuenta, obs}, items }
+      });
+      setSyncMsg(r.ok ? '✓ Guardado correctamente' : '✗ ' + r.error, 100);
+      hideProgress(700);
+      if(r.ok) toast('Guardado en Google Sheets ✓', 'success');
+      else toast('Error Sheets: ' + r.error, 'error');
+    } else {
+      setSyncMsg('Guardado localmente', 100);
+      hideProgress(500);
+      toast('Factura guardada localmente', 'info');
+    }
+  } catch(e) {
+    hideProgress(0);
+    toast('Error al guardar: ' + e.message, 'error');
   }
   clearPreview();
   renderHistFacturas();
@@ -1580,14 +1606,26 @@ async function saveIngreso() {
   const cat      = document.getElementById('ing-cat').value;
   const obs      = document.getElementById('ing-obs').value;
   if(!fecha || !concepto || monto <= 0) { toast('Completa fecha, concepto y monto', 'error'); return; }
-  const rec = { fecha, cliente, concepto, cat, cuenta, monto: +monto, obs, id: Date.now() };
-  STATE.ingresos.push(rec);
-  saveState();
-  if(STATE.config.scriptUrl) {
-    await gsAppendRow('Ingresos', [fecha, cliente, concepto, cat, cuenta, monto, obs]);
-    toast('Ingreso guardado en Sheets ✓', 'success');
-  } else {
-    toast('Ingreso guardado localmente', 'info');
+
+  showProgress('Guardando ingreso', 'Registrando ' + concepto + '...', 20);
+  try {
+    const rec = { fecha, cliente, concepto, cat, cuenta, monto: +monto, obs, id: Date.now() };
+    STATE.ingresos.push(rec);
+    saveState();
+    if(STATE.config.scriptUrl) {
+      setSyncMsg('Enviando a Sheets...', 60);
+      await gsAppendRow('Ingresos', [fecha, cliente, concepto, cat, cuenta, monto, obs]);
+      setSyncMsg('✓ Ingreso guardado', 100);
+      hideProgress(600);
+      toast('Ingreso guardado en Sheets ✓', 'success');
+    } else {
+      setSyncMsg('Guardado localmente', 100);
+      hideProgress(400);
+      toast('Ingreso guardado localmente', 'info');
+    }
+  } catch(e) {
+    hideProgress(0);
+    toast('Error al guardar: ' + e.message, 'error');
   }
   document.getElementById('ing-cliente').value = '';
   document.getElementById('ing-concepto').value = '';
@@ -1609,14 +1647,26 @@ async function saveMovimiento() {
   const desc    = document.getElementById('mov-desc').value;
   if(!fecha || monto <= 0) { toast('Completa fecha y monto', 'error'); return; }
   if(origen === destino) { toast('Origen y destino deben ser distintos', 'error'); return; }
-  const rec = { fecha, tipo, desc, origen, destino, montoOrigen: -monto, montoDestino: +monto, ref, id: Date.now() };
-  STATE.movimientos.push(rec);
-  saveState();
-  if(STATE.config.scriptUrl) {
-    await gsAppendRow('Movimientos', [fecha, tipo, desc, origen, destino, -monto, +monto, ref]);
-    toast('Movimiento guardado en Sheets ✓', 'success');
-  } else {
-    toast('Movimiento guardado localmente', 'info');
+
+  showProgress('Guardando movimiento', tipo + ': ' + origen + ' → ' + destino, 20);
+  try {
+    const rec = { fecha, tipo, desc, origen, destino, montoOrigen: -monto, montoDestino: +monto, ref, id: Date.now() };
+    STATE.movimientos.push(rec);
+    saveState();
+    if(STATE.config.scriptUrl) {
+      setSyncMsg('Enviando a Sheets...', 60);
+      await gsAppendRow('Movimientos', [fecha, tipo, desc, origen, destino, -monto, +monto, ref]);
+      setSyncMsg('✓ Movimiento guardado', 100);
+      hideProgress(600);
+      toast('Movimiento guardado en Sheets ✓', 'success');
+    } else {
+      setSyncMsg('Guardado localmente', 100);
+      hideProgress(400);
+      toast('Movimiento guardado localmente', 'info');
+    }
+  } catch(e) {
+    hideProgress(0);
+    toast('Error al guardar: ' + e.message, 'error');
   }
   document.getElementById('mov-monto').value = '';
   document.getElementById('mov-ref').value = '';
@@ -2414,15 +2464,32 @@ async function saveGastoManual() {
     toast('Ya existe un registro con ese número', 'error'); return;
   }
 
-  STATE.facturas.push({ header, items });
-  saveState();
+  showProgress('Guardando gasto manual', 'Validando datos...', 10);
+  try {
+    STATE.facturas.push({ header, items });
+    saveState();
+    setSyncMsg('Guardando en Sheets...', 40);
 
-  if(STATE.config.scriptUrl) {
-    const r = await gasCall('saveFactura', { data: { header, items } });
-    if(r.ok) toast('Gasto manual guardado en Sheets ✓', 'success');
-    else toast('Error Sheets: ' + r.error, 'error');
-  } else {
-    toast('Gasto manual guardado localmente', 'info');
+    if(STATE.config.scriptUrl) {
+      const r = await gasCall('saveFactura', { data: { header, items } });
+      if(r.ok) { setSyncMsg('✓ Gasto guardado', 70); }
+      else { toast('Error Sheets: ' + r.error, 'error'); hideProgress(0); return; }
+    } else {
+      setSyncMsg('Guardado localmente', 70);
+    }
+
+    // Guardar tercero si fue solicitado
+    if(guardarT === 'si' && (emisorRS || emisorNC)) {
+      setSyncMsg('Guardando tercero...', 85);
+      await saveTercero({ razonSocial: emisorRS, nomComercial: emisorNC, nit, tipo: tipoTerc, categoria: catTerc });
+    }
+
+    setSyncMsg('✓ Todo guardado correctamente', 100);
+    hideProgress(700);
+    toast(STATE.config.scriptUrl ? 'Gasto manual guardado en Sheets ✓' : 'Gasto manual guardado localmente', STATE.config.scriptUrl ? 'success' : 'info');
+  } catch(e) {
+    hideProgress(0);
+    toast('Error al guardar: ' + e.message, 'error');
   }
   clearManualForm();
   renderHistFacturas();
@@ -2775,6 +2842,8 @@ async function saveTCAll() {
   const tcId = 'TC-' + Date.now();
   const totalDist = tcLines.reduce((s, l) => s + l.monto, 0);
 
+  showProgress('Guardando transacción', 'Procesando ' + tcLines.length + ' líneas...', 10);
+  try {
   // Save each line to its corresponding sheet
   const promises = tcLines.map(async (l) => {
     if (l.tipo === 'Ingreso') {
@@ -2809,13 +2878,19 @@ async function saveTCAll() {
     // Save each line to TC history sheet
     const histRows = tcLines.map((l, idx) => [tcId, fecha, desc, montoRef, idx+1, l.tipo, l.concepto, l.cat||'', l.origen||'', l.destino||'', l.monto]);
     await Promise.all(histRows.map(row => gsAppendRow('Transacciones_Compuestas', row)));
-    toast('Transacción compuesta guardada en Sheets ✓', 'success');
+    setSyncMsg('✓ Guardado en Sheets', 95);
   } else {
-    toast('Transacción compuesta guardada localmente', 'info');
+    setSyncMsg('✓ Guardado localmente', 95);
   }
 
+  setSyncMsg('✓ Transacción guardada', 100);
+  hideProgress(700);
   tcRenderHist();
   tcClear();
+  } catch(e) {
+    hideProgress(0);
+    toast('Error al guardar: ' + e.message, 'error');
+  }
 }
 
 function tcClear() {
