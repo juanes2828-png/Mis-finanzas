@@ -861,7 +861,12 @@ tr:hover td{background:rgba(255,255,255,.02)}
           <option value="Inversiones">Inversiones</option>
         </select>
       </div>
-      <div class="field"><label>Referencia</label><input type="text" id="mov-ref" placeholder="Número de transacción"></div>
+      <div class="field autocomplete-wrap">
+        <label>Referencia</label>
+        <input type="text" id="mov-ref" placeholder="Número de transacción"
+               autocomplete="off" oninput="movRefFilter(this.value)" onblur="setTimeout(movRefClose,200)">
+        <div class="autocomplete-list" id="mov-ref-ac-list"></div>
+      </div>
       <div class="field span-3"><label>Descripción</label><input type="text" id="mov-desc" placeholder="Detalle del movimiento"></div>
     </div>
     <div class="btn-group">
@@ -1031,6 +1036,40 @@ tr:hover td{background:rgba(255,255,255,.02)}
           <tbody id="rep-facturas"></tbody>
         </table>
       </div>
+    </div>
+  </div>
+
+  <!-- Saldos préstamos -->
+  <div class="panel" style="margin-top:20px">
+    <div class="panel-title">
+      💰 Saldos de Préstamos por Tercero
+      <span class="badge" id="rep-prest-badge">cuenta: Préstamos</span>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
+      <div style="font-size:12px;color:var(--muted)">Solo terceros con saldo pendiente</div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer">
+        <input type="checkbox" id="rep-prest-todos" onchange="renderPrestamos()"
+               style="width:auto;min-height:auto;accent-color:var(--accent)">
+        Mostrar todos (incluso saldados)
+      </label>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Tercero (Referencia)</th>
+            <th style="text-align:right">Total prestado</th>
+            <th style="text-align:right">Total recibido</th>
+            <th style="text-align:right">Saldo pendiente</th>
+            <th style="text-align:center">Estado</th>
+          </tr>
+        </thead>
+        <tbody id="rep-prestamos-body"></tbody>
+      </table>
+    </div>
+    <div style="margin-top:12px;padding:12px 16px;background:var(--surface);border-radius:8px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <span style="font-size:12px;font-family:var(--mono);color:var(--muted)">TOTAL PENDIENTE</span>
+      <span class="amount-neg" style="font-family:var(--mono);font-weight:600;font-size:16px" id="rep-prest-total">$0</span>
     </div>
   </div>
 </div>
@@ -2329,6 +2368,79 @@ function renderReportes() {
   document.getElementById('rep-facturas').innerHTML = facsFilt.length ?
     facsFilt.map(f=>`<tr><td style="font-family:var(--mono)">${f.header.numero}</td><td>${f.header.emisorNC||f.header.emisorRS}</td><td>${f.header.fecha}</td><td class="amount-neg">${fmtCOP(f.header.total)}</td></tr>`).join('') :
     '<tr><td colspan="4" class="empty"><p>Sin facturas en el período</p></td></tr>';
+
+  // Saldos préstamos
+  renderPrestamos();
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// SALDOS PRÉSTAMOS POR TERCERO
+// ═══════════════════════════════════════════════════════════════
+function calcSaldosPrestamos() {
+  // Movimientos donde origen O destino es 'Préstamos'
+  const movsPrest = STATE.movimientos.filter(mv =>
+    mv.origen === 'Préstamos' || mv.destino === 'Préstamos'
+  );
+
+  const mapa = {}; // { ref: { prestado, recibido } }
+
+  movsPrest.forEach(mv => {
+    const ref = (mv.ref || '').trim();
+    if (!ref) return;
+    if (!mapa[ref]) mapa[ref] = { prestado: 0, recibido: 0 };
+
+    if (mv.destino === 'Préstamos') {
+      // Dinero que entra a Préstamos = yo presté
+      mapa[ref].prestado += Math.abs(mv.montoOrigen);
+    } else if (mv.origen === 'Préstamos') {
+      // Dinero que sale de Préstamos = me devuelven
+      mapa[ref].recibido += mv.montoDestino;
+    }
+  });
+
+  return Object.entries(mapa).map(([ref, v]) => ({
+    ref,
+    prestado: v.prestado,
+    recibido: v.recibido,
+    saldo:    v.prestado - v.recibido
+  })).sort((a, b) => b.saldo - a.saldo);
+}
+
+function renderPrestamos() {
+  const tbody    = document.getElementById('rep-prestamos-body');
+  const totalEl  = document.getElementById('rep-prest-total');
+  const badgeEl  = document.getElementById('rep-prest-badge');
+  if (!tbody) return;
+
+  const mostrarTodos = document.getElementById('rep-prest-todos')?.checked;
+  const datos = calcSaldosPrestamos();
+  const filtrados = mostrarTodos ? datos : datos.filter(d => d.saldo > 0.5);
+
+  const totalPend = datos.filter(d => d.saldo > 0.5).reduce((s, d) => s + d.saldo, 0);
+  if (totalEl) totalEl.textContent = fmtCOP(totalPend);
+  if (badgeEl) badgeEl.textContent = filtrados.length + ' tercero' + (filtrados.length !== 1 ? 's' : '');
+
+  if (!filtrados.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--accent);font-size:13px">' +
+      (mostrarTodos ? '📭 Sin movimientos en la cuenta Préstamos' : '✅ Todos los préstamos están saldados') +
+      '</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = filtrados.map(d => {
+    const saldado  = d.saldo <= 0.5;
+    const estadoBadge = saldado
+      ? '<span class="chip chip-green">✅ Saldado</span>'
+      : '<span class="chip chip-red">⏳ Pendiente</span>';
+    return '<tr>' +
+      '<td><strong>' + d.ref + '</strong></td>' +
+      '<td style="text-align:right;font-family:var(--mono);color:var(--accent2)">' + fmtCOP(d.prestado) + '</td>' +
+      '<td style="text-align:right;font-family:var(--mono);color:var(--accent)">'  + fmtCOP(d.recibido) + '</td>' +
+      '<td style="text-align:right;font-family:var(--mono);font-weight:600;color:' + (saldado ? 'var(--accent)' : 'var(--red)') + '">' + fmtCOP(Math.max(0, d.saldo)) + '</td>' +
+      '<td style="text-align:center">' + estadoBadge + '</td>' +
+      '</tr>';
+  }).join('');
 }
 
 function renderBarChart(chartKey, canvasId, labels, data, color) {
@@ -2453,13 +2565,30 @@ function clearLocalData() {
 }
 
 function updateMovTipo() {
-  const tipo = document.getElementById('mov-tipo').value;
+  const tipo    = document.getElementById('mov-tipo').value;
+  const refEl   = document.getElementById('mov-ref');
   document.getElementById('mov-desc').placeholder =
     tipo === 'Transferencia entre cuentas' ? 'Ej: Traslado a cuenta de ahorros' :
     tipo === 'Pago deudas'                 ? 'Ej: Cuota préstamo banco / tarjeta' :
     tipo === 'Préstamo a otros'            ? 'Ej: Préstamo a Juan Pérez' :
     tipo === 'Me pagan préstamo'           ? 'Ej: Juan Pérez me devuelve préstamo' :
     'Ej: Favor a / de ...';
+
+  // Update referencia placeholder and hint based on tipo
+  if (refEl) {
+    if (tipo === 'Me pagan préstamo') {
+      refEl.placeholder = 'Escribe 2+ caracteres para buscar...';
+      refEl.setAttribute('data-prest-ac', '1');
+    } else if (tipo === 'Préstamo a otros') {
+      refEl.placeholder = 'Nombre del tercero al que prestas';
+      refEl.removeAttribute('data-prest-ac');
+      movRefClose();
+    } else {
+      refEl.placeholder = 'Número de transacción';
+      refEl.removeAttribute('data-prest-ac');
+      movRefClose();
+    }
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -3163,6 +3292,10 @@ function updateMobileNav(page) {
     // Highlight "Más" button and the item inside
     const more = document.getElementById('mob-more');
     if (more) more.classList.add('active');
+    // also reset mob-more when navigating to main items
+  } else {
+    const more2 = document.getElementById('mob-more');
+    if (more2) more2.classList.remove('active');
     const moreItem = document.getElementById('mob-more-' + page);
     if (moreItem) moreItem.classList.add('active');
   }
@@ -3183,10 +3316,54 @@ document.addEventListener('click', function(e) {
   const menu = document.getElementById('mobile-more-menu');
   const btn  = document.getElementById('mob-more');
   if (menu && menu.classList.contains('open') &&
-      !menu.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+      !menu.contains(e.target) && e.target !== btn && !(btn && btn.contains(e.target))) {
     menu.classList.remove('open');
   }
 });
+
+
+// ═══════════════════════════════════════════════════════════════
+// AUTOCOMPLETE REFERENCIA EN MOVIMIENTOS (préstamos pendientes)
+// ═══════════════════════════════════════════════════════════════
+function movRefFilter(q) {
+  const refEl = document.getElementById('mov-ref');
+  // Solo activo si el tipo es "Me pagan préstamo"
+  if (!refEl || refEl.getAttribute('data-prest-ac') !== '1') return;
+  if (!q || q.length < 2) { movRefClose(); return; }
+
+  // Get terceros with pending balance
+  const saldos = calcSaldosPrestamos().filter(d => d.saldo > 0.5);
+  const matches = saldos.filter(d =>
+    d.ref.toLowerCase().includes(q.toLowerCase())
+  ).slice(0, 8);
+
+  const list = document.getElementById('mov-ref-ac-list');
+  if (!list) return;
+
+  if (!matches.length) { movRefClose(); return; }
+  list.innerHTML = matches.map(function(d, i) {
+    return '<div class="autocomplete-item" style="cursor:pointer">' +
+      '<div class="ac-rs">' + d.ref + '</div>' +
+      '<div class="ac-meta">Saldo pendiente: ' + fmtCOP(d.saldo) + '  ·  Prestado: ' + fmtCOP(d.prestado) + '</div>' +
+      '</div>';
+  }).join('');
+  // Attach click handlers safely after building innerHTML
+  Array.from(list.querySelectorAll('.autocomplete-item')).forEach(function(el, i) {
+    el.addEventListener('mousedown', function() { movRefSelect(matches[i].ref); });
+  });
+  list.classList.add('open');
+}
+
+function movRefSelect(ref) {
+  const el = document.getElementById('mov-ref');
+  if (el) el.value = ref;
+  movRefClose();
+}
+
+function movRefClose() {
+  const list = document.getElementById('mov-ref-ac-list');
+  if (list) list.classList.remove('open');
+}
 
 // ── Boot ──
 loadLocalState();
