@@ -1156,7 +1156,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
           <tr>
             <th style="width:110px">Tipo</th>
             <th>Concepto</th>
-            <th style="width:160px">Categoría</th>
+            <th style="width:160px">Categoría / Referencia</th>
             <th style="width:150px">Cuenta Origen</th>
             <th style="width:150px">Cuenta Destino</th>
             <th style="width:130px;text-align:right">Monto (COP)</th>
@@ -3008,7 +3008,7 @@ function tcCuentaOptions(selected) {
 
 function tcAddLine(tipo) {
   const id = tcNextId++;
-  tcLines.push({ id, tipo, concepto: '', cat: '', origen: '', destino: '', monto: 0 });
+  tcLines.push({ id, tipo, concepto: '', cat: '', origen: '', destino: '', monto: 0, ref: '' });
   tcRenderLines();
   // Focus on concepto of new row
   setTimeout(() => {
@@ -3052,10 +3052,17 @@ function tcRenderLines() {
     tdCon.innerHTML = '<input type="text" id="tc-con-' + id + '" value="' + (line.concepto||'') + '" placeholder="Concepto..." style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:13px">';
     tr.appendChild(tdCon);
 
-    // Categoría
+    // Categoría (Ingreso/Gasto) o Referencia con autocomplete (Movimiento)
     const tdCat = document.createElement('td');
     if (showCat) {
       tdCat.innerHTML = '<select id="tc-cat-' + id + '" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text);font-size:12px">' + tcCatOptions(tipo) + '</select>';
+    } else if (tipo === 'Movimiento') {
+      // Referencia con autocomplete de préstamos pendientes
+      tdCat.style.position = 'relative';
+      tdCat.innerHTML =
+        '<input type="text" id="tc-ref-' + id + '" placeholder="Referencia (tercero)..." autocomplete="off"' +
+        ' style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:13px">' +
+        '<div class="autocomplete-list" id="tc-ref-ac-' + id + '"></div>';
     } else {
       tdCat.innerHTML = '<span style="color:var(--border);font-size:12px">—</span>';
     }
@@ -3113,6 +3120,21 @@ function tcRenderLines() {
     });
     // Restore category selection
     if (catEl && line.cat) catEl.value = line.cat;
+
+    // Referencia autocomplete for Movimiento lines
+    const refInput = document.getElementById('tc-ref-' + id);
+    if (refInput) {
+      // Restore saved value
+      if (line.ref) refInput.value = line.ref;
+      refInput.addEventListener('input', function() {
+        const l = tcLines.find(x => x.id === id);
+        if (l) l.ref = this.value;
+        tcRefFilter(id, this.value);
+      });
+      refInput.addEventListener('blur', function() {
+        setTimeout(function() { tcRefClose(id); }, 200);
+      });
+    }
   });
 
   const badge = document.getElementById('tc-lineas-badge');
@@ -3196,10 +3218,11 @@ async function saveTCAll() {
         await gsAppendRow('Ingresos', [fecha, desc, l.concepto, l.cat, '', -l.monto, tcId]);
       }
     } else if (l.tipo === 'Movimiento') {
-      const rec = { fecha, tipo: 'Transferencia entre cuentas', desc: l.concepto, origen: l.origen, destino: l.destino, montoOrigen: -l.monto, montoDestino: +l.monto, ref: tcId, id: Date.now() + Math.random() };
+      const movRef = (l.ref && l.ref.trim()) ? l.ref.trim() : tcId;
+      const rec = { fecha, tipo: 'Transferencia entre cuentas', desc: l.concepto, origen: l.origen, destino: l.destino, montoOrigen: -l.monto, montoDestino: +l.monto, ref: movRef, id: Date.now() + Math.random() };
       STATE.movimientos.push(rec);
       if (STATE.config.scriptUrl) {
-        await gsAppendRow('Movimientos', [fecha, 'Transferencia entre cuentas', l.concepto, l.origen, l.destino, -l.monto, +l.monto, tcId]);
+        await gsAppendRow('Movimientos', [fecha, 'Transferencia entre cuentas', l.concepto, l.origen, l.destino, -l.monto, +l.monto, movRef]);
       }
     }
   });
@@ -3362,6 +3385,51 @@ function movRefSelect(ref) {
 
 function movRefClose() {
   const list = document.getElementById('mov-ref-ac-list');
+  if (list) list.classList.remove('open');
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// AUTOCOMPLETE REFERENCIA EN TRANSACCIÓN COMPUESTA
+// ═══════════════════════════════════════════════════════════════
+function tcRefFilter(lineId, q) {
+  const list = document.getElementById('tc-ref-ac-' + lineId);
+  if (!list) return;
+  if (!q || q.length < 2) { tcRefClose(lineId); return; }
+
+  const saldos  = calcSaldosPrestamos().filter(function(d) { return d.saldo > 0.5; });
+  const matches = saldos.filter(function(d) {
+    return d.ref.toLowerCase().includes(q.toLowerCase());
+  }).slice(0, 8);
+
+  if (!matches.length) { tcRefClose(lineId); return; }
+
+  list.innerHTML = matches.map(function(d, i) {
+    return '<div class="autocomplete-item">' +
+      '<div class="ac-rs">' + d.ref + '</div>' +
+      '<div class="ac-meta">Saldo pendiente: ' + fmtCOP(d.saldo) +
+      '  ·  Prestado: ' + fmtCOP(d.prestado) + '</div>' +
+      '</div>';
+  }).join('');
+
+  // Attach handlers safely
+  Array.from(list.querySelectorAll('.autocomplete-item')).forEach(function(el, i) {
+    el.addEventListener('mousedown', function() { tcRefSelect(lineId, matches[i].ref); });
+  });
+
+  list.classList.add('open');
+}
+
+function tcRefSelect(lineId, ref) {
+  const input = document.getElementById('tc-ref-' + lineId);
+  if (input) input.value = ref;
+  const l = tcLines.find(function(x) { return x.id === lineId; });
+  if (l) l.ref = ref;
+  tcRefClose(lineId);
+}
+
+function tcRefClose(lineId) {
+  const list = document.getElementById('tc-ref-ac-' + lineId);
   if (list) list.classList.remove('open');
 }
 
