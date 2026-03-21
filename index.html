@@ -258,6 +258,10 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
       Movimientos
     </div>
+    <div class="nav-item" onclick="goTo('compuesta')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+      Transacción Compuesta
+    </div>
     <div class="nav-section">Catálogos</div>
     <div class="nav-item" onclick="goTo('insumos')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
@@ -864,6 +868,86 @@ tr:hover td{background:rgba(255,255,255,.02)}
   </div>
 </div>
 
+<!-- ── TRANSACCIÓN COMPUESTA ── -->
+<div id="page-compuesta" class="page">
+  <div class="page-header">
+    <h2>Transacción Compuesta</h2>
+    <p>Distribuye un evento financiero en múltiples líneas de ingreso, gasto o movimiento</p>
+  </div>
+
+  <!-- Encabezado -->
+  <div class="panel">
+    <div class="panel-title">Encabezado de la transacción</div>
+    <div class="form-grid cols-3">
+      <div class="field">
+        <label>Fecha</label>
+        <input type="date" id="tc-fecha">
+      </div>
+      <div class="field span-2">
+        <label>Descripción general</label>
+        <input type="text" id="tc-desc" placeholder="Ej: Pago Juan Pérez, Nómina marzo...">
+      </div>
+      <div class="field">
+        <label>Monto de referencia (opcional)</label>
+        <input type="number" id="tc-monto-ref" placeholder="0" min="0" oninput="tcUpdateBalance()">
+      </div>
+      <div class="field">
+        <label>Total distribuido</label>
+        <div style="padding:9px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-family:var(--mono);font-size:13px" id="tc-total-dist">$0</div>
+      </div>
+      <div class="field">
+        <label>Balance</label>
+        <div id="tc-balance-badge" style="padding:9px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--muted)">— ingresa monto ref.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabla de líneas -->
+  <div class="panel">
+    <div class="panel-title">Distribución <span class="badge" id="tc-lineas-badge">0 líneas</span></div>
+    <div class="tbl-wrap">
+      <table id="tc-table" style="min-width:900px">
+        <thead>
+          <tr>
+            <th style="width:110px">Tipo</th>
+            <th>Concepto</th>
+            <th style="width:160px">Categoría</th>
+            <th style="width:150px">Cuenta Origen</th>
+            <th style="width:150px">Cuenta Destino</th>
+            <th style="width:130px;text-align:right">Monto (COP)</th>
+            <th style="width:40px"></th>
+          </tr>
+        </thead>
+        <tbody id="tc-lines-body"></tbody>
+      </table>
+    </div>
+    <div class="btn-group" style="margin-top:14px">
+      <button class="btn btn-outline btn-sm" onclick="tcAddLine('Ingreso')">＋ Ingreso</button>
+      <button class="btn btn-outline btn-sm" onclick="tcAddLine('Gasto')">＋ Gasto</button>
+      <button class="btn btn-outline btn-sm" onclick="tcAddLine('Movimiento')">＋ Movimiento</button>
+    </div>
+  </div>
+
+  <div class="btn-group">
+    <button class="btn btn-primary" onclick="saveTCAll()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+      Guardar todo
+    </button>
+    <button class="btn btn-secondary" onclick="tcClear()">Limpiar</button>
+  </div>
+
+  <!-- Historial -->
+  <div class="panel" style="margin-top:28px">
+    <div class="panel-title">Historial de Transacciones Compuestas</div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>ID</th><th>Fecha</th><th>Descripción</th><th>Monto ref.</th><th>Líneas</th><th>Total dist.</th></tr></thead>
+        <tbody id="tc-hist-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <!-- ── CONFIG ── -->
 <div id="page-config" class="page">
   <div class="page-header"><h2>Configuración</h2><p>Conecta con Google Sheets para sincronización en la nube</p></div>
@@ -1016,6 +1100,7 @@ const STATE = {
   movimientos: [],
   insumos: [],
   terceros: [],       // [{razonSocial, nomComercial, nit, tipo, categoria}]
+  compuestas: [],     // historial de transacciones compuestas
   currentInvoice: null,
   editCatIdx: null
 };
@@ -1072,8 +1157,10 @@ async function syncFromSheets() {
     const rMov = await gasGet({ action:'getAll', sheet:'Movimientos' });
     setSyncMsg('Leyendo catálogo de insumos...', 72);
     const rIns = await gasGet({ action:'getAll', sheet:'Insumos' });
-    setSyncMsg('Leyendo base de terceros...', 84);
+    setSyncMsg('Leyendo base de terceros...', 80);
     const rTerc = await gasGet({ action:'getAll', sheet:'Terceros' });
+    setSyncMsg('Leyendo transacciones compuestas...', 88);
+    const rTC = await gasGet({ action:'getAll', sheet:'Transacciones_Compuestas' });
     setSyncMsg('Procesando datos...', 92);
 
     // ── Rebuild facturas ──────────────────────────────────────
@@ -1162,6 +1249,19 @@ async function syncFromSheets() {
       }));
     }
 
+    // ── Rebuild compuestas ───────────────────────────────────
+    if(rTC && rTC.ok && rTC.rows && rTC.rows.length) {
+      const tcMap = {};
+      rTC.rows.forEach(r => {
+        const id = r.ID_TC;
+        if (!tcMap[id]) tcMap[id] = { id, fecha: String(r.Fecha).split('T')[0], desc: r.Descripcion, montoRef: parseFloat(r.MontoRef)||0, totalDist:0, lineas:[] };
+        const linea = { tipo: r.Tipo, concepto: r.Concepto, cat: r.Categoria, origen: r.CuentaOrigen, destino: r.CuentaDestino, monto: parseFloat(r.Monto)||0 };
+        tcMap[id].lineas.push(linea);
+        tcMap[id].totalDist += linea.monto;
+      });
+      STATE.compuestas = Object.values(tcMap).sort((a,b) => b.id.localeCompare(a.id));
+    }
+
     setSyncMsg('¡Listo!', 100);
     saveState();
     setTimeout(() => { overlay.style.display = 'none'; }, 600);
@@ -1191,6 +1291,7 @@ function goTo(page) {
   if(page === 'insumos')   renderInsumos();
   if(page === 'reportes')  renderReportes();
   if(page === 'terceros')   renderTerceros();
+  if(page === 'compuesta')  { tcInitFecha(); tcRenderHist(); }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2472,6 +2573,279 @@ async function saveTercero(data) {
   if (STATE.config.scriptUrl) {
     await gasCall('saveTercero', { data });
   }
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// TRANSACCIÓN COMPUESTA
+// ═══════════════════════════════════════════════════════════════
+let tcLines = [];   // [{id, tipo, concepto, cat, origen, destino, monto}]
+let tcNextId = 0;
+
+const TC_CATS_INGRESO = ['Salario', 'Subsidio de transporte', 'Auxilios', 'Prima de servicios', 'Cesantías', 'Intereses a las cesantías', 'Intereses por ahorros', 'Intereses por préstamo', 'Rendimientos', 'Abono beneficios', 'Ventas', 'Otros ingresos', 'Reembolso'];
+const TC_CATS_GASTO   = ['Bus', 'Taxi o Plataformas', 'Metro', 'Gasolina', 'Parqueadero', 'Mantenimiento', 'SOAT', 'Revisión Técnico mecánica', 'Bicicleta', 'Tiquetes aéreos', 'Mercado', 'Carne', 'Fruver', 'Comida por fuera', 'Mecato', 'Servicios públicos', 'Internet', 'Línea celular', 'Arriendo', 'Aseo hogar', 'Implementos hogar', 'Mascota', 'Gimnasio', 'Medicamentos - Citas', 'Aseo personal', 'Motilada', 'Streaming', 'Clase de baile', 'Cine - teatro - eventos', 'Playstation', 'Xbox', 'Tecnología', 'Ocio y otros', 'Intereses por deuda', 'Impuestos', 'Cuota de manejo', 'Seguro de vida', 'EPS', 'AFP', 'Regalo', 'Ropa', 'Ajuste'];
+const TC_CUENTAS      = ['Visa signature', 'Mastercard black', 'Terpel Colpatria', 'Débito Bancolombia', 'Débito Davivienda', 'Efectivo', 'Nequi', 'Daviplata', 'Claro Pay', 'Nubank', 'Préstamos', 'Préstamos personales', 'Inversiones'];
+
+function tcInitFecha() {
+  const el = document.getElementById('tc-fecha');
+  if (el && !el.value) el.value = new Date().toISOString().split('T')[0];
+}
+
+function tcCatOptions(tipo) {
+  const cats = tipo === 'Ingreso' ? TC_CATS_INGRESO : TC_CATS_GASTO;
+  return '<option value="">— Categoría —</option>' + cats.map(c => '<option value="' + c + '">' + c + '</option>').join('');
+}
+
+function tcCuentaOptions(selected) {
+  return TC_CUENTAS.map(c =>
+    '<option value="' + c + '"' + (c === selected ? ' selected' : '') + '>' + c + '</option>'
+  ).join('');
+}
+
+function tcAddLine(tipo) {
+  const id = tcNextId++;
+  tcLines.push({ id, tipo, concepto: '', cat: '', origen: '', destino: '', monto: 0 });
+  tcRenderLines();
+  // Focus on concepto of new row
+  setTimeout(() => {
+    const el = document.getElementById('tc-con-' + id);
+    if (el) el.focus();
+  }, 50);
+}
+
+function tcRemoveLine(id) {
+  tcLines = tcLines.filter(l => l.id !== id);
+  tcRenderLines();
+  tcUpdateBalance();
+}
+
+function tcRenderLines() {
+  const tbody = document.getElementById('tc-lines-body');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  tcLines.forEach(line => {
+    const id   = line.id;
+    const tipo = line.tipo;
+    const showCat    = tipo === 'Ingreso' || tipo === 'Gasto';
+    const showOrigen = tipo === 'Movimiento';
+    const showDest   = tipo === 'Ingreso' || tipo === 'Movimiento';
+
+    const tipoBg = tipo === 'Ingreso'    ? 'chip-green'
+                 : tipo === 'Gasto'      ? 'chip-red'
+                 : 'chip-orange';
+
+    const tr = document.createElement('tr');
+    tr.id = 'tc-row-' + id;
+
+    // Tipo cell
+    const tdTipo = document.createElement('td');
+    tdTipo.innerHTML = '<span class="chip ' + tipoBg + '" style="font-size:11px">' + tipo + '</span>';
+    tr.appendChild(tdTipo);
+
+    // Concepto
+    const tdCon = document.createElement('td');
+    tdCon.innerHTML = '<input type="text" id="tc-con-' + id + '" value="' + (line.concepto||'') + '" placeholder="Concepto..." style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:13px">';
+    tr.appendChild(tdCon);
+
+    // Categoría
+    const tdCat = document.createElement('td');
+    if (showCat) {
+      tdCat.innerHTML = '<select id="tc-cat-' + id + '" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text);font-size:12px">' + tcCatOptions(tipo) + '</select>';
+    } else {
+      tdCat.innerHTML = '<span style="color:var(--border);font-size:12px">—</span>';
+    }
+    tr.appendChild(tdCat);
+
+    // Cuenta origen
+    const tdOrig = document.createElement('td');
+    if (showOrigen) {
+      tdOrig.innerHTML = '<select id="tc-orig-' + id + '" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text);font-size:12px"><option value="">— Origen —</option>' + tcCuentaOptions(line.origen) + '</select>';
+    } else {
+      tdOrig.innerHTML = '<span style="color:var(--border);font-size:12px">—</span>';
+    }
+    tr.appendChild(tdOrig);
+
+    // Cuenta destino
+    const tdDest = document.createElement('td');
+    if (showDest) {
+      tdDest.innerHTML = '<select id="tc-dest-' + id + '" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text);font-size:12px"><option value="">— Destino —</option>' + tcCuentaOptions(line.destino) + '</select>';
+    } else {
+      tdDest.innerHTML = '<span style="color:var(--border);font-size:12px">—</span>';
+    }
+    tr.appendChild(tdDest);
+
+    // Monto
+    const tdMonto = document.createElement('td');
+    tdMonto.innerHTML = '<input type="number" id="tc-monto-' + id + '" value="' + (line.monto||0) + '" min="0" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text);font-size:13px;text-align:right;font-family:var(--mono)">';
+    tr.appendChild(tdMonto);
+
+    // Delete
+    const tdDel = document.createElement('td');
+    tdDel.innerHTML = '<button class="btn btn-sm btn-danger" onclick="tcRemoveLine(' + id + ')">✕</button>';
+    tr.appendChild(tdDel);
+
+    tbody.appendChild(tr);
+
+    // Attach listeners — never redraw on input
+    document.getElementById('tc-con-' + id).addEventListener('input', e => {
+      const l = tcLines.find(x => x.id === id); if(l) l.concepto = e.target.value;
+    });
+    const catEl = document.getElementById('tc-cat-' + id);
+    if (catEl) catEl.addEventListener('change', e => {
+      const l = tcLines.find(x => x.id === id); if(l) l.cat = e.target.value;
+    });
+    const origEl = document.getElementById('tc-orig-' + id);
+    if (origEl) origEl.addEventListener('change', e => {
+      const l = tcLines.find(x => x.id === id); if(l) l.origen = e.target.value;
+    });
+    const destEl = document.getElementById('tc-dest-' + id);
+    if (destEl) destEl.addEventListener('change', e => {
+      const l = tcLines.find(x => x.id === id); if(l) l.destino = e.target.value;
+    });
+    document.getElementById('tc-monto-' + id).addEventListener('input', e => {
+      const l = tcLines.find(x => x.id === id);
+      if (l) { l.monto = parseFloat(e.target.value) || 0; tcUpdateBalance(); }
+    });
+    // Restore category selection
+    if (catEl && line.cat) catEl.value = line.cat;
+  });
+
+  const badge = document.getElementById('tc-lineas-badge');
+  if (badge) badge.textContent = tcLines.length + ' líneas';
+  tcUpdateBalance();
+}
+
+function tcUpdateBalance() {
+  const totalDist = tcLines.reduce((s, l) => s + (l.monto || 0), 0);
+  const distEl    = document.getElementById('tc-total-dist');
+  const badgeEl   = document.getElementById('tc-balance-badge');
+  const montoRef  = parseFloat(document.getElementById('tc-monto-ref')?.value) || 0;
+
+  if (distEl) distEl.textContent = fmtCOP(totalDist);
+
+  if (badgeEl) {
+    if (!montoRef) {
+      badgeEl.textContent = '— ingresa monto ref.';
+      badgeEl.style.color = 'var(--muted)';
+      badgeEl.style.borderColor = 'var(--border)';
+    } else {
+      const diff = montoRef - totalDist;
+      if (Math.abs(diff) < 1) {
+        badgeEl.textContent = '✅ Cuadra';
+        badgeEl.style.color = 'var(--accent)';
+        badgeEl.style.borderColor = 'rgba(74,222,128,.4)';
+      } else if (diff > 0) {
+        badgeEl.textContent = '⚠ Faltan ' + fmtCOP(diff);
+        badgeEl.style.color = 'var(--warn)';
+        badgeEl.style.borderColor = 'rgba(251,146,60,.4)';
+      } else {
+        badgeEl.textContent = '⚠ Excede ' + fmtCOP(Math.abs(diff));
+        badgeEl.style.color = 'var(--red)';
+        badgeEl.style.borderColor = 'rgba(248,113,113,.4)';
+      }
+    }
+  }
+}
+
+async function saveTCAll() {
+  const fecha    = document.getElementById('tc-fecha')?.value;
+  const desc     = document.getElementById('tc-desc')?.value.trim();
+  const montoRef = parseFloat(document.getElementById('tc-monto-ref')?.value) || 0;
+
+  if (!fecha)  { toast('La fecha es requerida', 'error'); return; }
+  if (!desc)   { toast('Agrega una descripción general', 'error'); return; }
+  if (!tcLines.length) { toast('Agrega al menos una línea', 'error'); return; }
+
+  // Validate lines
+  for (let i = 0; i < tcLines.length; i++) {
+    const l = tcLines[i];
+    if (!l.concepto) { toast('Línea ' + (i+1) + ': falta el concepto', 'error'); return; }
+    if (!l.monto || l.monto <= 0) { toast('Línea ' + (i+1) + ': el monto debe ser mayor a 0', 'error'); return; }
+    if (l.tipo === 'Movimiento') {
+      if (!l.origen)  { toast('Línea ' + (i+1) + ': selecciona cuenta origen', 'error'); return; }
+      if (!l.destino) { toast('Línea ' + (i+1) + ': selecciona cuenta destino', 'error'); return; }
+      if (l.origen === l.destino) { toast('Línea ' + (i+1) + ': origen y destino deben ser distintos', 'error'); return; }
+    }
+    if ((l.tipo === 'Ingreso') && !l.destino) {
+      toast('Línea ' + (i+1) + ': selecciona la cuenta destino del ingreso', 'error'); return;
+    }
+  }
+
+  const tcId = 'TC-' + Date.now();
+  const totalDist = tcLines.reduce((s, l) => s + l.monto, 0);
+
+  // Save each line to its corresponding sheet
+  const promises = tcLines.map(async (l) => {
+    if (l.tipo === 'Ingreso') {
+      const rec = { fecha, cliente: desc, concepto: l.concepto, cat: l.cat, cuenta: l.destino, monto: +l.monto, obs: tcId, id: Date.now() + Math.random() };
+      STATE.ingresos.push(rec);
+      if (STATE.config.scriptUrl) {
+        await gsAppendRow('Ingresos', [fecha, desc, l.concepto, l.cat, l.destino, +l.monto, tcId]);
+      }
+    } else if (l.tipo === 'Gasto') {
+      const rec = { fecha, cliente: desc, concepto: l.concepto, cat: l.cat, cuenta: '', monto: -l.monto, obs: tcId, id: Date.now() + Math.random() };
+      STATE.ingresos.push(rec);
+      if (STATE.config.scriptUrl) {
+        await gsAppendRow('Ingresos', [fecha, desc, l.concepto, l.cat, '', -l.monto, tcId]);
+      }
+    } else if (l.tipo === 'Movimiento') {
+      const rec = { fecha, tipo: 'Transferencia entre cuentas', desc: l.concepto, origen: l.origen, destino: l.destino, montoOrigen: -l.monto, montoDestino: +l.monto, ref: tcId, id: Date.now() + Math.random() };
+      STATE.movimientos.push(rec);
+      if (STATE.config.scriptUrl) {
+        await gsAppendRow('Movimientos', [fecha, 'Transferencia entre cuentas', l.concepto, l.origen, l.destino, -l.monto, +l.monto, tcId]);
+      }
+    }
+  });
+
+  await Promise.all(promises);
+
+  // Save to Transacciones_Compuestas history
+  const tcRecord = { id: tcId, fecha, desc, montoRef, totalDist, lineas: [...tcLines] };
+  STATE.compuestas.push(tcRecord);
+  saveState();
+
+  if (STATE.config.scriptUrl) {
+    // Save each line to TC history sheet
+    const histRows = tcLines.map((l, idx) => [tcId, fecha, desc, montoRef, idx+1, l.tipo, l.concepto, l.cat||'', l.origen||'', l.destino||'', l.monto]);
+    await Promise.all(histRows.map(row => gsAppendRow('Transacciones_Compuestas', row)));
+    toast('Transacción compuesta guardada en Sheets ✓', 'success');
+  } else {
+    toast('Transacción compuesta guardada localmente', 'info');
+  }
+
+  tcRenderHist();
+  tcClear();
+}
+
+function tcClear() {
+  tcLines = [];
+  tcNextId = 0;
+  const fields = ['tc-desc','tc-monto-ref'];
+  fields.forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  tcInitFecha();
+  tcRenderLines();
+  tcUpdateBalance();
+}
+
+function tcRenderHist() {
+  const tbody = document.getElementById('tc-hist-body');
+  if (!tbody) return;
+  if (!STATE.compuestas.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty"><p>Sin transacciones compuestas registradas</p></td></tr>';
+    return;
+  }
+  tbody.innerHTML = [...STATE.compuestas].reverse().map(tc => {
+    const totalDist = tc.lineas ? tc.lineas.reduce((s,l) => s + l.monto, 0) : tc.totalDist;
+    return '<tr>' +
+      '<td style="font-family:var(--mono);font-size:11px;color:var(--accent2)">' + tc.id + '</td>' +
+      '<td>' + tc.fecha + '</td>' +
+      '<td><strong>' + tc.desc + '</strong></td>' +
+      '<td style="font-family:var(--mono)">' + (tc.montoRef ? fmtCOP(tc.montoRef) : '—') + '</td>' +
+      '<td style="text-align:center">' + (tc.lineas ? tc.lineas.length : '—') + '</td>' +
+      '<td style="font-family:var(--mono);color:var(--accent)">' + fmtCOP(totalDist) + '</td>' +
+    '</tr>';
+  }).join('');
 }
 
 // ── Boot ──
