@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>💸 · Mis Finanzas</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:ital,wght@0,300;0,600;0,900;1,300&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -65,6 +65,212 @@ nav{flex:1;padding:12px 0;overflow-y:auto}
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
 .grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px}
 @media(max-width:900px){.grid-2,.grid-3{grid-template-columns:1fr}}
+
+/* ══════════════════════════════════════════════════
+   RESPONSIVE MÓVIL — breakpoint 640px
+   ══════════════════════════════════════════════════ */
+@media(max-width:640px){
+
+  /* ── Sidebar: ocultar en móvil ── */
+  #sidebar{ display:none !important; }
+
+  /* ── Main: sin margen izquierdo, padding reducido ── */
+  #main{
+    margin-left:0 !important;
+    padding:16px 12px calc(96px + env(safe-area-inset-bottom)) 12px !important;
+  }
+
+  /* ── Barra de navegación inferior ── */
+  #mobile-nav{
+    display:flex !important;
+  }
+
+  /* ── Menú "Más" desplegable ── */
+  #mobile-more-menu{
+    display:none;
+    position:fixed;
+    bottom:calc(72px + env(safe-area-inset-bottom));
+    left:0;right:0;
+    background:var(--surface);
+    border-top:1px solid var(--border);
+    z-index:200;
+    padding:8px 0;
+    box-shadow:0 -4px 20px rgba(0,0,0,.4);
+  }
+  #mobile-more-menu.open{ display:block; }
+  .mob-more-item{
+    display:flex;align-items:center;gap:12px;
+    padding:12px 20px;cursor:pointer;
+    font-size:14px;color:var(--muted);font-family:var(--sans);
+    transition:background .1s;
+  }
+  .mob-more-item:hover,.mob-more-item.active{
+    background:rgba(74,222,128,.07);color:var(--accent);
+  }
+  .mob-more-item svg{width:18px;height:18px;flex-shrink:0}
+
+  /* ── Headers ── */
+  .page-header h2{ font-size:20px; }
+
+  /* ── Cards: 2 columnas en móvil ── */
+  .cards{
+    grid-template-columns:1fr 1fr !important;
+    gap:10px;
+  }
+  .card{ padding:14px; }
+  .card-value{ font-size:16px; }
+
+  /* ── Formularios: 1 columna siempre ── */
+  .form-grid,
+  .form-grid.cols-3,
+  .form-grid.cols-2{
+    grid-template-columns:1fr !important;
+    gap:10px;
+  }
+  .field.span-2,
+  .field.span-3{ grid-column:span 1 !important; }
+
+  /* ── Grids de paneles: 1 columna ── */
+  .grid-2,.grid-3{ grid-template-columns:1fr !important; gap:12px; }
+
+  /* ── Tablas: scroll horizontal ── */
+  .tbl-wrap{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  table{ min-width:480px; }
+
+  /* ── Tabla de ítems manual: más compacta ── */
+  #mg-items-body td,
+  #tc-lines-body td{ padding:6px 4px; font-size:12px; }
+
+  /* ── Panels ── */
+  .panel{ padding:14px; }
+
+  /* ── Botones: touch targets mínimo 48px (Samsung One UI) ── */
+  .btn-group{ gap:8px; }
+  .btn{ font-size:12px; padding:10px 14px; min-height:48px; }
+  .btn-sm{ min-height:40px; padding:8px 12px; }
+  .field input,.field select,.field textarea{ min-height:48px; font-size:16px; }
+  .field label{ font-size:12px; }
+
+  /* ── Chart boxes ── */
+  .chart-box{ height:200px !important; }
+
+  /* ── Filtros del dashboard en columna ── */
+  #page-dashboard .panel > div[style*="display:flex"]{
+    flex-direction:column !important;
+    gap:10px !important;
+  }
+  #dash-cuenta{ width:100% !important; }
+
+  /* ── Overlay de sync ── */
+  .sync-overlay p{ font-size:12px; }
+  .sync-bar{ width:200px; }
+
+  /* ── Autocomplete ── */
+  .autocomplete-list{ font-size:13px; }
+
+  /* ── Modal ── */
+  .modal{ padding:20px; width:95vw; }
+}
+
+
+/* ══════════════════════════════════════════════════
+   SAMSUNG S23+ ESPECÍFICO
+   412px CSS width · alta densidad · One UI
+   ══════════════════════════════════════════════════ */
+@media(max-width:430px){
+
+  /* Fuentes base más legibles en pantalla física */
+  body{ font-size:15px; }
+  .field label{
+    font-size:12px !important;
+    letter-spacing:.02em;
+  }
+  .card-label{
+    font-size:12px;
+  }
+  .card-value{
+    font-size:18px;
+  }
+  .card-sub{
+    font-size:11px;
+  }
+
+  /* Chip y badge más visibles */
+  .chip{ font-size:12px; padding:3px 10px; }
+  .badge{ font-size:10px; }
+
+  /* Nav inferior: íconos y texto bien proporcionados */
+  .mob-nav-item{
+    font-size:11px;
+    gap:4px;
+  }
+  .mob-nav-item svg{
+    width:22px;
+    height:22px;
+  }
+
+  /* Paneles con bordes más suaves */
+  .panel{ border-radius:10px; }
+  .card{ border-radius:10px; }
+
+  /* Inputs: evitar zoom automático en iOS/Android */
+  input[type="text"],
+  input[type="number"],
+  input[type="date"],
+  input[type="email"],
+  input[type="password"],
+  select,
+  textarea{
+    font-size:16px !important;
+    border-radius:8px;
+  }
+
+  /* Tabla compacta pero legible */
+  th{ font-size:10px; padding:8px 8px; }
+  td{ font-size:13px; padding:10px 8px; }
+
+  /* Modal ocupa más pantalla */
+  .modal{ width:98vw; padding:16px; border-radius:12px; }
+
+  /* Tabs más amplios */
+  .tab{ padding:8px 14px; font-size:12px; }
+
+  /* Page header */
+  .page-header h2{ font-size:22px; }
+  .page-header p{ font-size:13px; }
+
+  /* Sync overlay adaptado */
+  .sync-overlay h3{ font-size:17px; }
+  .sync-bar{ width:240px; }
+}
+/* ══════════════════════════════════════════════════
+   BARRA DE NAVEGACIÓN INFERIOR (móvil)
+   ══════════════════════════════════════════════════ */
+#mobile-nav{
+  display:none;
+  position:fixed;
+  bottom:0;left:0;right:0;
+  height:calc(72px + env(safe-area-inset-bottom));
+  background:var(--surface);
+  border-top:1px solid var(--border);
+  z-index:150;
+  align-items:stretch;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+.mob-nav-item{
+  flex:1;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  gap:3px;cursor:pointer;
+  color:var(--muted);font-size:10px;
+  font-family:var(--sans);font-weight:500;
+  padding:6px 4px;
+  transition:color .15s;
+  border:none;background:transparent;
+  -webkit-tap-highlight-color:transparent;
+}
+.mob-nav-item svg{ width:20px;height:20px;flex-shrink:0; }
+.mob-nav-item.active{ color:var(--accent); }
+.mob-nav-item:active{ opacity:.7; }
 
 /* ── Panel ── */
 .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px}
@@ -1300,6 +1506,8 @@ function goTo(page) {
   document.querySelectorAll('.nav-item').forEach(n => {
     if(n.getAttribute('onclick') === `goTo('${page}')`) n.classList.add('active');
   });
+  updateMobileNav(page);
+  closeMobileMore();
   if(page === 'dashboard') renderDashboard();
   if(page === 'facturas')  renderHistFacturas();
   if(page === 'ingresos')  renderHistIngresos();
@@ -2923,6 +3131,63 @@ function tcRenderHist() {
   }).join('');
 }
 
+
+// ═══════════════════════════════════════════════════════════════
+// MOBILE NAVIGATION
+// ═══════════════════════════════════════════════════════════════
+
+// Map page -> bottom nav button id (main 4 + more items)
+const MOB_NAV_MAP = {
+  dashboard:  'mob-dashboard',
+  facturas:   'mob-facturas',
+  ingresos:   'mob-ingresos',
+  movimientos:'mob-movimientos',
+  compuesta:  null,
+  insumos:    null,
+  terceros:   null,
+  reportes:   null,
+  config:     null,
+};
+
+const MOB_MORE_PAGES = ['compuesta','insumos','terceros','reportes','config'];
+
+function updateMobileNav(page) {
+  // Reset all bottom nav items
+  document.querySelectorAll('.mob-nav-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.mob-more-item').forEach(el => el.classList.remove('active'));
+
+  if (MOB_NAV_MAP[page]) {
+    const el = document.getElementById(MOB_NAV_MAP[page]);
+    if (el) el.classList.add('active');
+  } else if (MOB_MORE_PAGES.includes(page)) {
+    // Highlight "Más" button and the item inside
+    const more = document.getElementById('mob-more');
+    if (more) more.classList.add('active');
+    const moreItem = document.getElementById('mob-more-' + page);
+    if (moreItem) moreItem.classList.add('active');
+  }
+}
+
+function toggleMobileMore() {
+  const menu = document.getElementById('mobile-more-menu');
+  if (menu) menu.classList.toggle('open');
+}
+
+function closeMobileMore() {
+  const menu = document.getElementById('mobile-more-menu');
+  if (menu) menu.classList.remove('open');
+}
+
+// Close more menu when tapping outside
+document.addEventListener('click', function(e) {
+  const menu = document.getElementById('mobile-more-menu');
+  const btn  = document.getElementById('mob-more');
+  if (menu && menu.classList.contains('open') &&
+      !menu.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+    menu.classList.remove('open');
+  }
+});
+
 // ── Boot ──
 loadLocalState();
 preloadDemoInsumos();
@@ -2932,5 +3197,57 @@ if(STATE.config.scriptUrl) {
   renderDashboard();
 }
 </script>
+
+<!-- ═══════ MOBILE BOTTOM NAV ═══════ -->
+<div id="mobile-nav">
+  <button class="mob-nav-item active" id="mob-dashboard" onclick="goTo('dashboard')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+    Inicio
+  </button>
+  <button class="mob-nav-item" id="mob-facturas" onclick="goTo('facturas')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+    Gastos
+  </button>
+  <button class="mob-nav-item" id="mob-ingresos" onclick="goTo('ingresos')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+    Ingresos
+  </button>
+  <button class="mob-nav-item" id="mob-movimientos" onclick="goTo('movimientos')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+    Movimientos
+  </button>
+  <button class="mob-nav-item" id="mob-more" onclick="toggleMobileMore()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+    Más
+  </button>
+</div>
+
+<!-- Menú "Más" desplegable -->
+<div id="mobile-more-menu">
+  <div class="mob-more-item" id="mob-more-compuesta" onclick="goTo('compuesta');closeMobileMore()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+    Transacción Compuesta
+  </div>
+  <div class="mob-more-item" id="mob-more-insumos" onclick="goTo('insumos');closeMobileMore()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+    Maestro Insumos
+  </div>
+  <div class="mob-more-item" id="mob-more-terceros" onclick="goTo('terceros');closeMobileMore()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    Terceros
+  </div>
+  <div class="mob-more-item" id="mob-more-reportes" onclick="goTo('reportes');closeMobileMore()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+    Reportes
+  </div>
+  <div class="mob-more-item" id="mob-more-config" onclick="goTo('config');closeMobileMore()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+    Configuración
+  </div>
+  <div class="mob-more-item" onclick="syncFromSheets();closeMobileMore()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+    Sincronizar
+  </div>
+</div>
 </body>
 </html>
