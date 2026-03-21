@@ -83,6 +83,7 @@ nav{flex:1;padding:12px 0;overflow-y:auto}
   /* ── Barra de navegación inferior ── */
   #mobile-nav{
     display:flex !important;
+    z-index:400 !important;
   }
 
   /* ── Menú "Más" desplegable ── */
@@ -243,6 +244,33 @@ nav{flex:1;padding:12px 0;overflow-y:auto}
   .sync-overlay h3{ font-size:17px; }
   .sync-bar{ width:240px; }
 }
+
+/* ══════════════════════════════════════════════════
+   LANDSCAPE MÓVIL — resetear safe-area y padding
+   Evita scroll excesivo en horizontal
+   ══════════════════════════════════════════════════ */
+@media(max-height:500px) and (orientation:landscape){
+
+  /* Ocultar barra inferior en landscape — el sidebar es visible */
+  #mobile-nav{ display:none !important; }
+  #mobile-more-menu{ display:none !important; }
+
+  /* Resetear padding inferior al valor normal del desktop */
+  #main{
+    margin-left:220px !important;
+    padding:20px 24px 24px 24px !important;
+  }
+
+  /* Mostrar sidebar en landscape */
+  #sidebar{ display:flex !important; }
+
+  /* Reducir tamaño de logo en landscape para que quepa */
+  .logo h1{ font-size:15px !important; }
+  .logo{ padding:14px 16px !important; }
+  .nav-item{ padding:7px 16px !important; font-size:12px !important; }
+  .nav-section{ padding:6px 14px 2px !important; }
+  .sidebar-bottom{ padding:10px 12px !important; }
+}
 /* ══════════════════════════════════════════════════
    BARRA DE NAVEGACIÓN INFERIOR (móvil)
    ══════════════════════════════════════════════════ */
@@ -253,9 +281,15 @@ nav{flex:1;padding:12px 0;overflow-y:auto}
   height:calc(72px + env(safe-area-inset-bottom));
   background:var(--surface);
   border-top:1px solid var(--border);
-  z-index:150;
+  z-index:400;
   align-items:stretch;
   padding-bottom:env(safe-area-inset-bottom);
+}
+#mobile-more-menu{
+  display:none;
+  position:fixed;
+  bottom:0;left:0;right:0;
+  z-index:200;
 }
 .mob-nav-item{
   flex:1;display:flex;flex-direction:column;
@@ -349,7 +383,8 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .status-dot.ok{background:var(--accent)}
 
 /* ── Chart container ── */
-.chart-box{position:relative;height:220px}
+.chart-box{position:relative;height:220px;overflow:hidden;isolation:isolate}
+.chart-box canvas{max-height:100%!important}
 
 /* ── Empty state ── */
 .empty{text-align:center;padding:40px;color:var(--muted)}
