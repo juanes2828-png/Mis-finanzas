@@ -461,6 +461,10 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .cat-Ropa{background:rgba(9,121,112,.28);color:var(--muted)}
 .cat-Ajuste{background:rgba(9,121,112,.28);color:var(--muted)}
 .nec-Necesario{background:rgba(74,222,128,.12);color:var(--accent);border:1px solid rgba(74,222,128,.3)}
+.pres-bar-wrap{background:var(--border);border-radius:4px;height:8px;overflow:hidden;flex:1;min-width:60px}
+.pres-bar-fill{height:100%;border-radius:4px;transition:width .4s ease}
+.pres-ok{background:var(--accent)}.pres-warn{background:var(--warn)}.pres-over{background:var(--red)}
+.pres-alert{background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.4);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--red)}
 .autocomplete-wrap{position:relative}
 .autocomplete-list{position:absolute;top:100%;left:0;right:0;background:var(--panel);border:1px solid var(--accent2);border-radius:0 0 8px 8px;z-index:200;max-height:220px;overflow-y:auto;display:none}
 .autocomplete-list.open{display:block}
@@ -513,6 +517,10 @@ tr:hover td{background:rgba(255,255,255,.02)}
       Terceros
     </div>
     <div class="nav-section">Análisis</div>
+    <div class="nav-item" onclick="goTo('presupuesto')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+      Presupuesto
+    </div>
     <div class="nav-item" onclick="goTo('reportes')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
       Reportes
@@ -571,6 +579,8 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <div class="card"><div class="card-label">Gastos</div><div class="card-value neg" id="d-gastos">$0</div><div class="card-sub">En el período</div></div>
     <div class="card"><div class="card-label">Balance neto</div><div class="card-value neu" id="d-balance">$0</div><div class="card-sub">Ingresos − Gastos</div></div>
     <div class="card"><div class="card-label">Facturas</div><div class="card-value neu" id="d-nfact">0</div><div class="card-sub">En el período</div></div>
+    <div class="card" id="dash-pres-ing-card" style="display:none"><div class="card-label">💰 Pres. Ingresos</div><div class="card-value neu" id="dash-pres-ing-pct">—</div><div class="card-sub" id="dash-pres-ing-sub">sin presupuesto</div></div>
+    <div class="card" id="dash-pres-gst-card" style="display:none"><div class="card-label">💸 Pres. Gastos</div><div class="card-value neu" id="dash-pres-gst-pct">—</div><div class="card-sub" id="dash-pres-gst-sub">sin presupuesto</div></div>
   </div>
 
   <!-- Fila 1: torta Ingresos vs Gastos + evolución mensual -->
@@ -1228,6 +1238,44 @@ tr:hover td{background:rgba(255,255,255,.02)}
   </div>
 </div>
 
+<!-- ── PRESUPUESTO ── -->
+<div id="page-presupuesto" class="page">
+  <div class="page-header"><h2>Presupuesto</h2><p>Seguimiento mensual vs lo presupuestado en Sheets</p></div>
+  <div class="panel" style="margin-bottom:20px">
+    <div style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap">
+      <div class="field" style="flex:0 0 auto"><label>Mes</label><input type="month" id="pres-mes" onchange="renderPresupuesto()" style="width:160px"></div>
+      <div style="margin-bottom:1px"><button class="btn btn-outline btn-sm" onclick="presSetMesActual()">Mes actual</button></div>
+      <div id="pres-alert-banner" class="pres-alert" style="display:none;flex:1;min-width:200px"></div>
+    </div>
+  </div>
+  <div class="cards" style="margin-bottom:20px">
+    <div class="card"><div class="card-label">Ingresos presupuestados</div><div class="card-value neu" id="pres-ing-bud">$0</div><div class="card-sub" id="pres-ing-sub">ejecutado: $0</div></div>
+    <div class="card"><div class="card-label">Gastos presupuestados</div><div class="card-value neg" id="pres-gst-bud">$0</div><div class="card-sub" id="pres-gst-sub">ejecutado: $0</div></div>
+    <div class="card"><div class="card-label">Cumplimiento ingresos</div><div class="card-value pos" id="pres-ing-pct">0%</div><div class="card-sub">vs presupuestado</div></div>
+    <div class="card"><div class="card-label">Ejecución gastos</div><div class="card-value neu" id="pres-gst-pct">0%</div><div class="card-sub">vs presupuestado</div></div>
+  </div>
+  <div class="panel" style="margin-bottom:20px">
+    <div class="panel-title">Presupuesto vs Ejecutado <span class="badge" id="pres-chart-badge">mes</span></div>
+    <div class="chart-box" style="height:300px"><canvas id="chart-pres"></canvas></div>
+  </div>
+  <div class="panel" style="margin-bottom:16px">
+    <div class="panel-title">📈 Ingresos por Categoría</div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Categoría</th><th style="text-align:right">Presupuestado</th><th style="text-align:right">Ejecutado</th><th style="text-align:right">Diferencia</th><th style="text-align:right">%</th><th style="width:120px">Progreso</th></tr></thead>
+      <tbody id="pres-ing-body"></tbody>
+      <tfoot><tr style="font-weight:600;border-top:2px solid var(--border)"><td>TOTAL</td><td style="text-align:right;font-family:var(--mono)" id="pres-ing-tot-bud">$0</td><td style="text-align:right;font-family:var(--mono);color:var(--accent)" id="pres-ing-tot-eje">$0</td><td style="text-align:right;font-family:var(--mono)" id="pres-ing-tot-dif">$0</td><td style="text-align:right" id="pres-ing-tot-pct">0%</td><td></td></tr></tfoot>
+    </table></div>
+  </div>
+  <div class="panel">
+    <div class="panel-title">📉 Gastos por Categoría</div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Categoría</th><th style="text-align:right">Presupuestado</th><th style="text-align:right">Ejecutado</th><th style="text-align:right">Diferencia</th><th style="text-align:right">%</th><th style="width:120px">Progreso</th></tr></thead>
+      <tbody id="pres-gst-body"></tbody>
+      <tfoot><tr style="font-weight:600;border-top:2px solid var(--border)"><td>TOTAL</td><td style="text-align:right;font-family:var(--mono)" id="pres-gst-tot-bud">$0</td><td style="text-align:right;font-family:var(--mono);color:var(--red)" id="pres-gst-tot-eje">$0</td><td style="text-align:right;font-family:var(--mono)" id="pres-gst-tot-dif">$0</td><td style="text-align:right" id="pres-gst-tot-pct">0%</td><td></td></tr></tfoot>
+    </table></div>
+  </div>
+</div>
+
 <!-- ── CONFIG ── -->
 <div id="page-config" class="page">
   <div class="page-header"><h2>Configuración</h2><p>Conecta con Google Sheets para sincronización en la nube</p></div>
@@ -1381,6 +1429,7 @@ const STATE = {
   insumos: [],
   terceros: [],       // [{razonSocial, nomComercial, nit, tipo, categoria}]
   compuestas: [],     // historial de transacciones compuestas
+  presupuesto: [],    // [{categoria, tipo, base, ajustes:{YYYY-MM: valor}}]
   currentInvoice: null,
   editCatIdx: null
 };
@@ -1455,7 +1504,9 @@ async function syncFromSheets() {
     const rIns = await gasGet({ action:'getAll', sheet:'Insumos' });
     setSyncMsg('Leyendo base de terceros...', 80);
     const rTerc = await gasGet({ action:'getAll', sheet:'Terceros' });
-    setSyncMsg('Leyendo transacciones compuestas...', 88);
+    setSyncMsg('Leyendo presupuesto...', 85);
+    const rPres = await gasGet({ action:'getAll', sheet:'Presupuesto' });
+    setSyncMsg('Leyendo transacciones compuestas...', 90);
     const rTC = await gasGet({ action:'getAll', sheet:'Transacciones_Compuestas' });
     setSyncMsg('Procesando datos...', 92);
 
@@ -1545,6 +1596,19 @@ async function syncFromSheets() {
       }));
     }
 
+    // ── Rebuild presupuesto ──────────────────────────────────
+    if(rPres && rPres.ok && rPres.rows && rPres.rows.length) {
+      STATE.presupuesto = rPres.rows.map(function(r) {
+        var ajustes = {};
+        Object.keys(r).forEach(function(k) {
+          if(/^[0-9]{4}-[0-9]{2}$/.test(k) && r[k] !== '' && r[k] !== null) {
+            ajustes[k] = parseFloat(r[k]) || 0;
+          }
+        });
+        return { categoria: r.Categoria||'', tipo: r.Tipo||'Gasto', base: parseFloat(r.Base)||0, ajustes: ajustes };
+      }).filter(function(r){ return r.categoria; });
+    }
+
     // ── Rebuild compuestas ───────────────────────────────────
     if(rTC && rTC.ok && rTC.rows && rTC.rows.length) {
       const tcMap = {};
@@ -1589,6 +1653,7 @@ function goTo(page) {
   if(page === 'insumos')   renderInsumos();
   if(page === 'reportes')  renderReportes();
   if(page === 'terceros')   renderTerceros();
+  if(page === 'presupuesto') { presSetMesActual(); renderPresupuesto(); }
   if(page === 'compuesta')  { tcInitFecha(); tcRenderHist(); }
 }
 
@@ -2276,6 +2341,8 @@ function renderDashboard() {
       }
     });
   }
+
+  presUpdateDashboard();
 
   // ── Gráfica 4: Dona gastos por categoría ─────────────────
   const catData = {};
@@ -3334,6 +3401,7 @@ const MOB_NAV_MAP = {
   terceros:   null,
   reportes:   null,
   config:     null,
+  presupuesto: null,
 };
 
 const MOB_MORE_PAGES = ['compuesta','insumos','terceros','reportes','config'];
@@ -3468,6 +3536,180 @@ function tcRefClose(lineId) {
   if (list) list.classList.remove('open');
 }
 
+
+// ═══════════════════════════════════════════════════════════════
+// PRESUPUESTO
+// ═══════════════════════════════════════════════════════════════
+let chartPres = null;
+
+function presSetMesActual() {
+  var now = new Date();
+  var mes = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+  var el = document.getElementById('pres-mes');
+  if (el && !el.value) el.value = mes;
+}
+
+function presGetBudget(row, mes) {
+  if (row.ajustes && row.ajustes[mes] !== undefined) return row.ajustes[mes];
+  return row.base;
+}
+
+function presGetEjecutado(categoria, tipo, mes) {
+  if (!mes) return 0;
+  var parts = mes.split('-');
+  var y = parseInt(parts[0]), m = parseInt(parts[1]);
+  if (tipo === 'Ingreso') {
+    return STATE.ingresos.filter(function(i) {
+      var d = new Date(i.fecha);
+      return d.getFullYear() === y && d.getMonth()+1 === m && i.cat === categoria && i.monto > 0;
+    }).reduce(function(s,i){ return s + i.monto; }, 0);
+  } else {
+    return STATE.facturas.filter(function(f) {
+      var d = new Date(f.header.fecha);
+      return d.getFullYear() === y && d.getMonth()+1 === m;
+    }).reduce(function(s,f) {
+      return s + f.items.filter(function(it){ return it.cat === categoria; })
+                        .reduce(function(si,it){ return si + it.total; }, 0);
+    }, 0);
+  }
+}
+
+function renderPresupuesto() {
+  presSetMesActual();
+  var mes = document.getElementById('pres-mes') ? document.getElementById('pres-mes').value : '';
+  if (!mes) return;
+
+  var ingRows = STATE.presupuesto.filter(function(r){ return r.tipo === 'Ingreso'; });
+  var gstRows = STATE.presupuesto.filter(function(r){ return r.tipo === 'Gasto'; });
+
+  if (!STATE.presupuesto.length) {
+    ['pres-ing-body','pres-gst-body'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.innerHTML = '<tr><td colspan="6" class="empty"><p>Sin presupuesto — define valores en la hoja Presupuesto de Sheets y sincroniza</p></td></tr>';
+    });
+    return;
+  }
+
+  var alertas = [];
+
+  function buildRows(rows, tbodyId, totBudId, totEjeId, totDifId, totPctId) {
+    var tbody = document.getElementById(tbodyId);
+    if (!tbody) return { totalBud:0, totalEje:0 };
+    var totalBud = 0, totalEje = 0;
+    tbody.innerHTML = '';
+    rows.forEach(function(row) {
+      var bud = presGetBudget(row, mes);
+      var eje = presGetEjecutado(row.categoria, row.tipo, mes);
+      var dif = eje - bud;
+      var pct = bud > 0 ? (eje / bud * 100) : 0;
+      totalBud += bud; totalEje += eje;
+      var barClass = pct > 100 ? 'pres-over' : pct >= 80 ? 'pres-warn' : 'pres-ok';
+      var barW = Math.min(pct, 100).toFixed(1);
+      var difColor = row.tipo === 'Ingreso'
+        ? (dif >= 0 ? 'var(--accent)' : 'var(--red)')
+        : (dif <= 0 ? 'var(--accent)' : 'var(--red)');
+      if (pct > 100 && row.tipo === 'Gasto') alertas.push(row.categoria + ': ' + pct.toFixed(0) + '%');
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td>' + row.categoria + '</td>' +
+        '<td style="text-align:right;font-family:var(--mono)">' + fmtCOP(bud) + '</td>' +
+        '<td style="text-align:right;font-family:var(--mono)">' + fmtCOP(eje) + '</td>' +
+        '<td style="text-align:right;font-family:var(--mono);color:' + difColor + '">' + (dif>=0?'+':'') + fmtCOP(dif) + '</td>' +
+        '<td style="text-align:right;font-weight:600;color:' + (pct>100?'var(--red)':pct>=80?'var(--warn)':'var(--accent)') + '">' + pct.toFixed(0) + '%</td>' +
+        '<td><div style="display:flex;align-items:center;gap:6px"><div class="pres-bar-wrap"><div class="pres-bar-fill ' + barClass + '" style="width:' + barW + '%"></div></div></div></td>';
+      tbody.appendChild(tr);
+    });
+    var totPct = totalBud > 0 ? (totalEje/totalBud*100) : 0;
+    var totDif = totalEje - totalBud;
+    var setEl = function(id, val) { var e = document.getElementById(id); if(e) e.textContent = val; };
+    setEl(totBudId, fmtCOP(totalBud));
+    setEl(totEjeId, fmtCOP(totalEje));
+    setEl(totDifId, (totDif>=0?'+':'') + fmtCOP(totDif));
+    setEl(totPctId, totPct.toFixed(0) + '%');
+    var difEl = document.getElementById(totDifId);
+    if (difEl) difEl.style.color = totDif >= 0 ? 'var(--accent)' : 'var(--red)';
+    return { totalBud:totalBud, totalEje:totalEje };
+  }
+
+  var ingTot = buildRows(ingRows,'pres-ing-body','pres-ing-tot-bud','pres-ing-tot-eje','pres-ing-tot-dif','pres-ing-tot-pct');
+  var gstTot = buildRows(gstRows,'pres-gst-body','pres-gst-tot-bud','pres-gst-tot-eje','pres-gst-tot-dif','pres-gst-tot-pct');
+
+  var ingPct = ingTot.totalBud > 0 ? (ingTot.totalEje/ingTot.totalBud*100) : 0;
+  var gstPct = gstTot.totalBud > 0 ? (gstTot.totalEje/gstTot.totalBud*100) : 0;
+
+  var setEl = function(id, val) { var e = document.getElementById(id); if(e) e.textContent = val; };
+  setEl('pres-ing-bud', fmtCOP(ingTot.totalBud));
+  setEl('pres-gst-bud', fmtCOP(gstTot.totalBud));
+  setEl('pres-ing-sub', 'ejecutado: ' + fmtCOP(ingTot.totalEje));
+  setEl('pres-gst-sub', 'ejecutado: ' + fmtCOP(gstTot.totalEje));
+  var ingPctEl = document.getElementById('pres-ing-pct');
+  if (ingPctEl) { ingPctEl.textContent = ingPct.toFixed(0)+'%'; ingPctEl.className = 'card-value '+(ingPct>=100?'pos':ingPct>=80?'neu':'neg'); }
+  var gstPctEl = document.getElementById('pres-gst-pct');
+  if (gstPctEl) { gstPctEl.textContent = gstPct.toFixed(0)+'%'; gstPctEl.className = 'card-value '+(gstPct>100?'neg':gstPct>=80?'warn':'pos'); }
+
+  var banner = document.getElementById('pres-alert-banner');
+  if (banner) {
+    if (alertas.length) { banner.style.display='block'; banner.innerHTML='🔴 <strong>Superaron 100%:</strong> '+alertas.join(' · '); }
+    else banner.style.display='none';
+  }
+  var badge = document.getElementById('pres-chart-badge');
+  if (badge) badge.textContent = mes;
+
+  var allRows = ingRows.concat(gstRows);
+  var labels  = allRows.map(function(r){ return r.categoria; });
+  var budData = allRows.map(function(r){ return presGetBudget(r, mes); });
+  var ejeData = allRows.map(function(r){ return presGetEjecutado(r.categoria, r.tipo, mes); });
+  var ejeColors = allRows.map(function(r, i) {
+    var pct = budData[i] > 0 ? ejeData[i]/budData[i] : 0;
+    return r.tipo==='Ingreso' ? 'rgba(96,165,250,.8)' : (pct>1?'rgba(248,113,113,.85)':pct>=0.8?'rgba(251,146,60,.85)':'rgba(74,222,128,.8)');
+  });
+
+  if (chartPres) chartPres.destroy();
+  var ctx = document.getElementById('chart-pres');
+  if (ctx) {
+    chartPres = new Chart(ctx.getContext('2d'), {
+      type: 'bar',
+      data: { labels: labels, datasets: [
+        { label:'Presupuestado', data:budData, backgroundColor:'rgba(107,114,128,.4)', borderColor:'rgba(107,114,128,.8)', borderWidth:1, borderRadius:3 },
+        { label:'Ejecutado',     data:ejeData, backgroundColor:ejeColors, borderRadius:3 }
+      ]},
+      options: { responsive:true, maintainAspectRatio:false,
+        scales: {
+          x:{ ticks:{color:'#9ca3af',font:{size:10}}, grid:{display:false} },
+          y:{ ticks:{color:'#6b7280', callback:function(v){ return '$'+(v/1000).toFixed(0)+'k'; }}, grid:{color:'#252a3a'} }
+        },
+        plugins:{ legend:{ labels:{color:'#9ca3af',font:{size:11}} } }
+      }
+    });
+  }
+}
+
+function presUpdateDashboard() {
+  if (!STATE.presupuesto.length) return;
+  var now = new Date();
+  var mes = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+  var ingRows = STATE.presupuesto.filter(function(r){ return r.tipo==='Ingreso'; });
+  var gstRows = STATE.presupuesto.filter(function(r){ return r.tipo==='Gasto'; });
+  var ingBud = ingRows.reduce(function(s,r){ return s+presGetBudget(r,mes); },0);
+  var ingEje = ingRows.reduce(function(s,r){ return s+presGetEjecutado(r.categoria,'Ingreso',mes); },0);
+  var gstBud = gstRows.reduce(function(s,r){ return s+presGetBudget(r,mes); },0);
+  var gstEje = gstRows.reduce(function(s,r){ return s+presGetEjecutado(r.categoria,'Gasto',mes); },0);
+  var ingPct = ingBud > 0 ? (ingEje/ingBud*100) : 0;
+  var gstPct = gstBud > 0 ? (gstEje/gstBud*100) : 0;
+  var ingCard = document.getElementById('dash-pres-ing-card');
+  var gstCard = document.getElementById('dash-pres-gst-card');
+  if (ingCard) ingCard.style.display='block';
+  if (gstCard) gstCard.style.display='block';
+  var ingPctEl = document.getElementById('dash-pres-ing-pct');
+  if (ingPctEl) { ingPctEl.textContent=ingPct.toFixed(0)+'%'; ingPctEl.className='card-value '+(ingPct>=100?'pos':ingPct>=80?'neu':'neg'); }
+  var ingSubEl = document.getElementById('dash-pres-ing-sub');
+  if (ingSubEl) ingSubEl.textContent = fmtCOP(ingEje)+' / '+fmtCOP(ingBud);
+  var gstPctEl = document.getElementById('dash-pres-gst-pct');
+  if (gstPctEl) { gstPctEl.textContent=gstPct.toFixed(0)+'%'; gstPctEl.className='card-value '+(gstPct>100?'neg':gstPct>=80?'warn':'pos'); }
+  var gstSubEl = document.getElementById('dash-pres-gst-sub');
+  if (gstSubEl) gstSubEl.textContent = fmtCOP(gstEje)+' / '+fmtCOP(gstBud);
+}
+
 // ── Boot ──
 loadLocalState();
 preloadDemoInsumos();
@@ -3519,6 +3761,10 @@ if(STATE.config.scriptUrl) {
   <div class="mob-more-item" id="mob-more-reportes" onclick="goTo('reportes');closeMobileMore()">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
     Reportes
+  </div>
+  <div class="mob-more-item" id="mob-more-presupuesto" onclick="goTo('presupuesto');closeMobileMore()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+    Presupuesto
   </div>
   <div class="mob-more-item" id="mob-more-config" onclick="goTo('config');closeMobileMore()">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
