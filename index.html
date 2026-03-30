@@ -1510,6 +1510,15 @@ async function syncFromSheets() {
     const rTC = await gasGet({ action:'getAll', sheet:'Transacciones_Compuestas' });
     setSyncMsg('Procesando datos...', 92);
 
+    // ── Reset STATE antes de reconstruir para evitar duplicados ─
+    STATE.facturas    = [];
+    STATE.ingresos    = [];
+    STATE.movimientos = [];
+    STATE.insumos     = [];
+    STATE.terceros    = [];
+    STATE.compuestas  = [];
+    STATE.presupuesto = [];
+
     // ── Rebuild facturas ──────────────────────────────────────
     if(rFac.ok && rFac.rows.length) {
       const detRows = rDet.ok ? rDet.rows : [];
@@ -2425,17 +2434,20 @@ function renderReportes() {
       <td class="amount-neg">${fmtCOP(i.total)}</td></tr>`).join('') :
     '<tr><td colspan="5" class="empty"><p>Sin datos</p></td></tr>';
 
-  // Necesario vs Innecesario
+  // Necesario vs Innecesario — agrupado por descripción+categoría
   let necTotal = 0, innecTotal = 0;
-  const innecItems = [];
+  const innecMap = {};
   facsFilt.forEach(f => f.items.forEach(it => {
     if((it.nec||'Necesario') === 'Innecesario') {
       innecTotal += it.total;
-      innecItems.push({ desc:it.desc, cat:it.cat, total:it.total, factura:f.header.numero });
+      const k = (it.desc||'Sin descripción') + '|' + (it.cat||'');
+      if (!innecMap[k]) innecMap[k] = { desc: it.desc||'Sin descripción', cat: it.cat||'', total: 0 };
+      innecMap[k].total += it.total;
     } else {
       necTotal += it.total;
     }
   }));
+  const innecItems = Object.values(innecMap);
   const totalGasto = necTotal + innecTotal;
   document.getElementById('rep-nec-total').textContent   = fmtCOP(necTotal);
   document.getElementById('rep-innec-total').textContent = fmtCOP(innecTotal);
