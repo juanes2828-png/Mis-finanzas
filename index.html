@@ -533,9 +533,12 @@ tr:hover td{background:rgba(255,255,255,.02)}
   </nav>
   <div class="sidebar-bottom">
     <span id="gs-status-badge" class="config-badge">⚙ Sin configurar</span>
-    <button onclick="syncFromSheets()" class="btn btn-outline" style="width:100%;margin-top:10px;font-size:12px;padding:7px" title="Recargar datos desde Google Sheets">
+    <button onclick="syncFromSheets(false)" class="btn btn-outline" style="width:100%;margin-top:10px;font-size:12px;padding:7px" title="Cargar datos (usa caché si está vigente)">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
       Sincronizar
+    </button>
+    <button onclick="syncFromSheets(true)" class="btn btn-outline" style="width:100%;margin-top:5px;font-size:11px;padding:5px;opacity:0.7" title="Ignorar caché y traer datos frescos de Sheets">
+      ↺ Forzar recarga desde Sheets
     </button>
   </div>
 </div>
@@ -1487,150 +1490,83 @@ function hideProgress(delay) {
   }, delay || 0);
 }
 
-async function syncFromSheets() {
+// ── Cache helpers ─────────────────────────────────────────────
+const CACHE_KEY    = 'gf_sheets_cache';
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutos
+
+function saveSheetCache(data) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data }));
+  } catch(e) { console.warn('Cache write failed:', e); }
+}
+
+function loadSheetCache() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const { ts, data } = JSON.parse(raw);
+    if (Date.now() - ts > CACHE_TTL_MS) return null; // expirado
+    return data;
+  } catch(e) { return null; }
+}
+
+function clearSheetCache() {
+  localStorage.removeItem(CACHE_KEY);
+}
+
+function cacheAge() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const { ts } = JSON.parse(raw);
+    const mins = Math.floor((Date.now() - ts) / 60000);
+    return mins;
+  } catch(e) { return null; }
+}
+
+async function syncFromSheets(forceRefresh = false) {
   if(!STATE.config.scriptUrl) return;
   const overlay = document.getElementById('sync-overlay');
   overlay.style.display = 'flex';
   try {
-    setSyncMsg('Leyendo facturas...', 10);
-    const rFac = await gasGet({ action:'getAll', sheet:'Facturas' });
-    setSyncMsg('Leyendo detalle de ítems...', 28);
-    const rDet = await gasGet({ action:'getAll', sheet:'Detalle_Facturas' });
-    setSyncMsg('Leyendo ingresos...', 46);
-    const rIng = await gasGet({ action:'getAll', sheet:'Ingresos' });
-    setSyncMsg('Leyendo movimientos...', 62);
-    const rMov = await gasGet({ action:'getAll', sheet:'Movimientos' });
-    setSyncMsg('Leyendo catálogo de insumos...', 72);
-    const rIns = await gasGet({ action:'getAll', sheet:'Insumos' });
-    setSyncMsg('Leyendo base de terceros...', 80);
-    const rTerc = await gasGet({ action:'getAll', sheet:'Terceros' });
-    setSyncMsg('Leyendo presupuesto...', 85);
-    const rPres = await gasGet({ action:'getAll', sheet:'Presupuesto' });
-    setSyncMsg('Leyendo transacciones compuestas...', 90);
-    const rTC = await gasGet({ action:'getAll', sheet:'Transacciones_Compuestas' });
+    // ── Intentar caché primero (si no se fuerza refresh) ──────
+    if (!forceRefresh) {
+      const cached = loadSheetCache();
+      if (cached) {
+        setSyncMsg('Cargando desde caché local...', 50);
+        const { rFac, rDet, rIng, rMov, rIns, rTerc, rPres, rTC } = cached;
+        setSyncMsg('Procesando datos...', 90);
+        rebuildState(rFac, rDet, rIng, rMov, rIns, rTerc, rPres, rTC);
+        setSyncMsg('¡Listo! (caché)', 100);
+        saveState();
+        setTimeout(() => { overlay.style.display = 'none'; }, 400);
+        const age = cacheAge();
+        toast(`Datos cargados desde caché${age !== null ? ' (hace ' + age + ' min)' : ''} — usa "Forzar recarga" para actualizar`, 'info');
+        return;
+      }
+    }
+
+    // ── Sin caché válida: traer todo en paralelo ──────────────
+    setSyncMsg('Conectando con Sheets...', 5);
+    let done = 0;
+    const total = 8;
+    const tick = (label) => { done++; setSyncMsg(label, Math.round(5 + (done / total) * 85)); };
+
+    const [rFac, rDet, rIng, rMov, rIns, rTerc, rPres, rTC] = await Promise.all([
+      gasGet({ action:'getAll', sheet:'Facturas'                }).then(r => { tick('Facturas ✓');                return r; }),
+      gasGet({ action:'getAll', sheet:'Detalle_Facturas'        }).then(r => { tick('Detalle ítems ✓');          return r; }),
+      gasGet({ action:'getAll', sheet:'Ingresos'                }).then(r => { tick('Ingresos ✓');               return r; }),
+      gasGet({ action:'getAll', sheet:'Movimientos'             }).then(r => { tick('Movimientos ✓');            return r; }),
+      gasGet({ action:'getAll', sheet:'Insumos'                 }).then(r => { tick('Insumos ✓');                return r; }),
+      gasGet({ action:'getAll', sheet:'Terceros'                }).then(r => { tick('Terceros ✓');               return r; }),
+      gasGet({ action:'getAll', sheet:'Presupuesto'             }).then(r => { tick('Presupuesto ✓');            return r; }),
+      gasGet({ action:'getAll', sheet:'Transacciones_Compuestas'}).then(r => { tick('Transacciones ✓');          return r; }),
+    ]);
+
+    // Guardar en caché para próximas cargas
+    saveSheetCache({ rFac, rDet, rIng, rMov, rIns, rTerc, rPres, rTC });
     setSyncMsg('Procesando datos...', 92);
-
-    // ── Reset STATE antes de reconstruir para evitar duplicados ─
-    STATE.facturas    = [];
-    STATE.ingresos    = [];
-    STATE.movimientos = [];
-    STATE.insumos     = [];
-    STATE.terceros    = [];
-    STATE.compuestas  = [];
-    STATE.presupuesto = [];
-
-    // ── Rebuild facturas ──────────────────────────────────────
-    if(rFac.ok && rFac.rows.length) {
-      const detRows = rDet.ok ? rDet.rows : [];
-      STATE.facturas = rFac.rows.map(h => ({
-        header: {
-          numero:    h.No_Factura,
-          fecha:     h.Fecha instanceof Date ? h.Fecha.toISOString().split('T')[0] : String(h.Fecha).split('T')[0],
-          emisorRS:  h.Emisor,
-          emisorNC:  h.NomComercial,
-          emisorNIT: h.NIT,
-          emisorDir: h.Direccion,
-          total:     parseFloat(h.Total) || 0,
-          cuenta:    h.Cuenta,
-          cufe:      h.CUFE,
-          obs:       h.Observaciones,
-          manual:    !h.CUFE,
-          dianStatus: h.CUFE ? 'Documento validado por la DIAN' : 'Manual'
-        },
-        items: detRows
-          .filter(d => String(d.No_Factura) === String(h.No_Factura))
-          .map(d => ({
-            cod:   String(d.Codigo),
-            desc:  d.Descripcion,
-            cant:  parseFloat(d.Cantidad) || 0,
-            vUnit: parseFloat(d.VUnitario) || 0,
-            base:  parseFloat(d.BaseGravable) || 0,
-            inc:   parseFloat(d.INC) || 0,
-            total: parseFloat(d.Total) || 0,
-            cat:   d.Categoria || 'Ocio y otros',
-            nec:   d.TipoGasto || 'Necesario'
-          }))
-      }));
-    }
-
-    // ── Rebuild ingresos ──────────────────────────────────────
-    if(rIng.ok && rIng.rows.length) {
-      STATE.ingresos = rIng.rows.map(r => ({
-        fecha:    String(r.Fecha).split('T')[0],
-        cliente:  r.Cliente,
-        concepto: r.Concepto,
-        cat:      r.Categoria,
-        cuenta:   r.Cuenta,
-        monto:    parseFloat(r.Monto) || 0,
-        obs:      r.Observaciones,
-        id:       r.ID
-      }));
-    }
-
-    // ── Rebuild movimientos ───────────────────────────────────
-    if(rMov.ok && rMov.rows.length) {
-      STATE.movimientos = rMov.rows.map(r => ({
-        fecha:         String(r.Fecha).split('T')[0],
-        tipo:          r.Tipo,
-        desc:          r.Descripcion,
-        origen:        r.Origen,
-        destino:       r.Destino,
-        montoOrigen:   parseFloat(r.MontoOrigen) || 0,
-        montoDestino:  parseFloat(r.MontoDestino) || 0,
-        ref:           r.Referencia,
-        id:            r.ID
-      }));
-    }
-
-    // ── Rebuild insumos ───────────────────────────────────────
-    if(rIns.ok && rIns.rows.length) {
-      STATE.insumos = rIns.rows.map(r => ({
-        proveedor:    r.Proveedor,
-        codigo:       String(r.Codigo),
-        nombre:       r.Nombre,
-        categoria:    r.Categoria,
-        subcategoria: r.Subcategoria,
-        um:           r.UnidadMedida
-      }));
-    }
-
-    // ── Rebuild terceros ─────────────────────────────────
-    if(rTerc && rTerc.ok && rTerc.rows && rTerc.rows.length) {
-      STATE.terceros = rTerc.rows.map(r => ({
-        razonSocial:  r.RazonSocial  || '',
-        nomComercial: r.NomComercial || '',
-        nit:          String(r.NIT || ''),
-        tipo:         r.Tipo         || 'Proveedor',
-        categoria:    r.Categoria    || ''
-      }));
-    }
-
-    // ── Rebuild presupuesto ──────────────────────────────────
-    if(rPres && rPres.ok && rPres.rows && rPres.rows.length) {
-      STATE.presupuesto = rPres.rows.map(function(r) {
-        var ajustes = {};
-        Object.keys(r).forEach(function(k) {
-          if(/^[0-9]{4}-[0-9]{2}$/.test(k) && r[k] !== '' && r[k] !== null) {
-            ajustes[k] = parseFloat(r[k]) || 0;
-          }
-        });
-        return { categoria: r.Categoria||'', tipo: r.Tipo||'Gasto', base: parseFloat(r.Base)||0, ajustes: ajustes };
-      }).filter(function(r){ return r.categoria; });
-    }
-
-    // ── Rebuild compuestas ───────────────────────────────────
-    if(rTC && rTC.ok && rTC.rows && rTC.rows.length) {
-      const tcMap = {};
-      rTC.rows.forEach(r => {
-        const id = r.ID_TC;
-        if (!tcMap[id]) tcMap[id] = { id, fecha: String(r.Fecha).split('T')[0], desc: r.Descripcion, montoRef: parseFloat(r.MontoRef)||0, totalDist:0, lineas:[] };
-        const linea = { tipo: r.Tipo, concepto: r.Concepto, cat: r.Categoria, origen: r.CuentaOrigen, destino: r.CuentaDestino, monto: parseFloat(r.Monto)||0 };
-        tcMap[id].lineas.push(linea);
-        tcMap[id].totalDist += linea.monto;
-      });
-      STATE.compuestas = Object.values(tcMap).sort((a,b) => b.id.localeCompare(a.id));
-    }
-
+    rebuildState(rFac, rDet, rIng, rMov, rIns, rTerc, rPres, rTC);
     setSyncMsg('¡Listo!', 100);
     saveState();
     setTimeout(() => { overlay.style.display = 'none'; }, 600);
@@ -1640,6 +1576,129 @@ async function syncFromSheets() {
     overlay.style.display = 'none';
     toast('Error al sincronizar: ' + err.message, 'error');
     console.error(err);
+  }
+}
+
+// ── Reconstruye STATE desde las respuestas crudas de Sheets ──
+function rebuildState(rFac, rDet, rIng, rMov, rIns, rTerc, rPres, rTC) {
+  STATE.facturas    = [];
+  STATE.ingresos    = [];
+  STATE.movimientos = [];
+  STATE.insumos     = [];
+  STATE.terceros    = [];
+  STATE.compuestas  = [];
+  STATE.presupuesto = [];
+
+  // ── Rebuild facturas ──────────────────────────────────────
+  if(rFac.ok && rFac.rows.length) {
+    const detRows = rDet.ok ? rDet.rows : [];
+    STATE.facturas = rFac.rows.map(h => ({
+      header: {
+        numero:    h.No_Factura,
+        fecha:     h.Fecha instanceof Date ? h.Fecha.toISOString().split('T')[0] : String(h.Fecha).split('T')[0],
+        emisorRS:  h.Emisor,
+        emisorNC:  h.NomComercial,
+        emisorNIT: h.NIT,
+        emisorDir: h.Direccion,
+        total:     parseFloat(h.Total) || 0,
+        cuenta:    h.Cuenta,
+        cufe:      h.CUFE,
+        obs:       h.Observaciones,
+        manual:    !h.CUFE,
+        dianStatus: h.CUFE ? 'Documento validado por la DIAN' : 'Manual'
+      },
+      items: detRows
+        .filter(d => String(d.No_Factura) === String(h.No_Factura))
+        .map(d => ({
+          cod:   String(d.Codigo),
+          desc:  d.Descripcion,
+          cant:  parseFloat(d.Cantidad) || 0,
+          vUnit: parseFloat(d.VUnitario) || 0,
+          base:  parseFloat(d.BaseGravable) || 0,
+          inc:   parseFloat(d.INC) || 0,
+          total: parseFloat(d.Total) || 0,
+          cat:   d.Categoria || 'Ocio y otros',
+          nec:   d.TipoGasto || 'Necesario'
+        }))
+    }));
+  }
+
+  // ── Rebuild ingresos ──────────────────────────────────────
+  if(rIng.ok && rIng.rows.length) {
+    STATE.ingresos = rIng.rows.map(r => ({
+      fecha:    String(r.Fecha).split('T')[0],
+      cliente:  r.Cliente,
+      concepto: r.Concepto,
+      cat:      r.Categoria,
+      cuenta:   r.Cuenta,
+      monto:    parseFloat(r.Monto) || 0,
+      obs:      r.Observaciones,
+      id:       r.ID
+    }));
+  }
+
+  // ── Rebuild movimientos ───────────────────────────────────
+  if(rMov.ok && rMov.rows.length) {
+    STATE.movimientos = rMov.rows.map(r => ({
+      fecha:         String(r.Fecha).split('T')[0],
+      tipo:          r.Tipo,
+      desc:          r.Descripcion,
+      origen:        r.Origen,
+      destino:       r.Destino,
+      montoOrigen:   parseFloat(r.MontoOrigen) || 0,
+      montoDestino:  parseFloat(r.MontoDestino) || 0,
+      ref:           r.Referencia,
+      id:            r.ID
+    }));
+  }
+
+  // ── Rebuild insumos ───────────────────────────────────────
+  if(rIns.ok && rIns.rows.length) {
+    STATE.insumos = rIns.rows.map(r => ({
+      proveedor:    r.Proveedor,
+      codigo:       String(r.Codigo),
+      nombre:       r.Nombre,
+      categoria:    r.Categoria,
+      subcategoria: r.Subcategoria,
+      um:           r.UnidadMedida
+    }));
+  }
+
+  // ── Rebuild terceros ─────────────────────────────────
+  if(rTerc && rTerc.ok && rTerc.rows && rTerc.rows.length) {
+    STATE.terceros = rTerc.rows.map(r => ({
+      razonSocial:  r.RazonSocial  || '',
+      nomComercial: r.NomComercial || '',
+      nit:          String(r.NIT || ''),
+      tipo:         r.Tipo         || 'Proveedor',
+      categoria:    r.Categoria    || ''
+    }));
+  }
+
+  // ── Rebuild presupuesto ──────────────────────────────────
+  if(rPres && rPres.ok && rPres.rows && rPres.rows.length) {
+    STATE.presupuesto = rPres.rows.map(function(r) {
+      var ajustes = {};
+      Object.keys(r).forEach(function(k) {
+        if(/^[0-9]{4}-[0-9]{2}$/.test(k) && r[k] !== '' && r[k] !== null) {
+          ajustes[k] = parseFloat(r[k]) || 0;
+        }
+      });
+      return { categoria: r.Categoria||'', tipo: r.Tipo||'Gasto', base: parseFloat(r.Base)||0, ajustes: ajustes };
+    }).filter(function(r){ return r.categoria; });
+  }
+
+  // ── Rebuild compuestas ───────────────────────────────────
+  if(rTC && rTC.ok && rTC.rows && rTC.rows.length) {
+    const tcMap = {};
+    rTC.rows.forEach(r => {
+      const id = r.ID_TC;
+      if (!tcMap[id]) tcMap[id] = { id, fecha: String(r.Fecha).split('T')[0], desc: r.Descripcion, montoRef: parseFloat(r.MontoRef)||0, totalDist:0, lineas:[] };
+      const linea = { tipo: r.Tipo, concepto: r.Concepto, cat: r.Categoria, origen: r.CuentaOrigen, destino: r.CuentaDestino, monto: parseFloat(r.Monto)||0 };
+      tcMap[id].lineas.push(linea);
+      tcMap[id].totalDist += linea.monto;
+    });
+    STATE.compuestas = Object.values(tcMap).sort((a,b) => b.id.localeCompare(a.id));
   }
 }
 
@@ -1935,7 +1994,7 @@ async function saveFactura() {
       });
       setSyncMsg(r.ok ? '✓ Guardado correctamente' : '✗ ' + r.error, 100);
       hideProgress(700);
-      if(r.ok) toast('Guardado en Google Sheets ✓', 'success');
+      if(r.ok) { clearSheetCache(); toast('Guardado en Google Sheets ✓', 'success'); }
       else toast('Error Sheets: ' + r.error, 'error');
     } else {
       setSyncMsg('Guardado localmente', 100);
@@ -1973,7 +2032,7 @@ async function saveIngreso() {
       await gsAppendRow('Ingresos', [fecha, cliente, concepto, cat, cuenta, monto, obs]);
       setSyncMsg('✓ Ingreso guardado', 100);
       hideProgress(600);
-      toast('Ingreso guardado en Sheets ✓', 'success');
+      clearSheetCache(); toast('Ingreso guardado en Sheets ✓', 'success');
     } else {
       setSyncMsg('Guardado localmente', 100);
       hideProgress(400);
@@ -2014,7 +2073,7 @@ async function saveMovimiento() {
       await gsAppendRow('Movimientos', [fecha, tipo, desc, origen, destino, -monto, +monto, ref]);
       setSyncMsg('✓ Movimiento guardado', 100);
       hideProgress(600);
-      toast('Movimiento guardado en Sheets ✓', 'success');
+      clearSheetCache(); toast('Movimiento guardado en Sheets ✓', 'success');
     } else {
       setSyncMsg('Guardado localmente', 100);
       hideProgress(400);
@@ -2049,7 +2108,7 @@ async function saveInsumo() {
   saveState();
   if(STATE.config.scriptUrl) {
     await gsAppendRow('Insumos', [prov, cod, nombre, cat, sub, um]);
-    toast('Insumo guardado en Sheets ✓', 'success');
+    clearSheetCache(); toast('Insumo guardado en Sheets ✓', 'success');
   } else {
     toast('Insumo guardado localmente', 'info');
   }
@@ -2937,6 +2996,7 @@ async function saveGastoManual() {
 
     setSyncMsg('✓ Todo guardado correctamente', 100);
     hideProgress(700);
+    if(STATE.config.scriptUrl) clearSheetCache();
     toast(STATE.config.scriptUrl ? 'Gasto manual guardado en Sheets ✓' : 'Gasto manual guardado localmente', STATE.config.scriptUrl ? 'success' : 'info');
   } catch(e) {
     hideProgress(0);
@@ -3090,6 +3150,7 @@ async function saveTercero(data) {
   // Sync to Sheets
   if (STATE.config.scriptUrl) {
     await gasCall('saveTercero', { data });
+    clearSheetCache();
   }
 }
 
@@ -3352,6 +3413,7 @@ async function saveTCAll() {
     // Save each line to TC history sheet
     const histRows = tcLines.map((l, idx) => [tcId, fecha, desc, montoRef, idx+1, l.tipo, l.concepto, l.cat||'', l.origen||'', l.destino||'', l.monto]);
     await Promise.all(histRows.map(row => gsAppendRow('Transacciones_Compuestas', row)));
+    clearSheetCache();
     setSyncMsg('✓ Guardado en Sheets', 95);
   } else {
     setSyncMsg('✓ Guardado localmente', 95);
