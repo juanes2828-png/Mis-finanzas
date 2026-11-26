@@ -474,6 +474,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .autocomplete-item .ac-rs{color:var(--text);font-weight:500}
 .autocomplete-item .ac-meta{font-size:11px;color:var(--muted);font-family:var(--mono);margin-top:2px}
 .nec-Innecesario{background:rgba(248,113,113,.12);color:var(--red);border:1px solid rgba(248,113,113,.3)}
+.nec-Isabel{background: #2b854c;color: var(--accent2);border: 1px solid blue;}
 </style>
 </head>
 <body>
@@ -1036,7 +1037,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
   <!-- Necesario vs Innecesario panel -->
   <div class="panel" style="margin-bottom:20px">
     <div class="panel-title">Necesario vs Innecesario <span class="badge">por ítem</span></div>
-    <div class="grid-3" style="margin-bottom:16px">
+    <div class="grid-2" style="margin-bottom:16px">
       <div class="card">
         <div class="card-label">Gasto Necesario</div>
         <div class="card-value pos" id="rep-nec-total">$0</div>
@@ -1046,6 +1047,11 @@ tr:hover td{background:rgba(255,255,255,.02)}
         <div class="card-label">Gasto Innecesario</div>
         <div class="card-value neg" id="rep-innec-total">$0</div>
         <div class="card-sub" id="rep-innec-pct">0% del total</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Gasto Isabel</div>
+        <div class="card-value neg" id="rep-isab-total">$0</div>
+        <div class="card-sub" id="rep-isab-pct">0% del total</div>
       </div>
       <div class="card">
         <div class="card-label">Ítems innecesarios</div>
@@ -1410,6 +1416,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
         <select id="modal-nec-sel">
           <option value="Necesario">✅ Necesario</option>
           <option value="Innecesario">❌ Innecesario</option>
+          <option value="Isabel">💓 Isabel</option>
         </select>
       </div>
     </div>
@@ -2126,8 +2133,18 @@ function clearInsumoForm() {
 // ═══════════════════════════════════════════════════════════════
 function renderHistFacturas() {
   const tbody = document.getElementById('hist-facturas');
-  if(!STATE.facturas.length) { tbody.innerHTML = '<tr><td colspan="8" class="empty">No hay facturas registradas</td></tr>'; return; }
-  tbody.innerHTML = STATE.facturas.map(f => `
+  if(!STATE.facturas.length) { 
+    tbody.innerHTML = '<tr><td colspan="8" class="empty">No hay facturas registradas</td></tr>'; 
+    return; 
+  }
+
+  // 1. Creamos una copia ([...]), ordenamos por fecha descendente y tomamos los 20 primeros
+  const facturasRecientes = [...STATE.facturas]
+    .sort((a, b) => new Date(b.header.fecha) - new Date(a.header.fecha))
+    .slice(0, 20);
+
+  // 2. Renderizamos sobre el nuevo array filtrado
+  tbody.innerHTML = facturasRecientes.map(f => `
     <tr>
       <td><span class="chip chip-blue" style="font-family:var(--mono)">${f.header.numero}</span></td>
       <td>${f.header.fecha}</td>
@@ -2850,6 +2867,7 @@ function addManualItemRow(idx) {
       <select id="mi-nec-${idx}" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text);font-size:12px">
         <option value="Necesario">✅ Necesario</option>
         <option value="Innecesario">❌ Innecesario</option>
+        <option value="Isabel">💓 Isabel</option>
       </select>
     </td>
     <td><button class="btn btn-sm btn-danger" onclick="removeManualItem(${idx})">✕</button></td>`;
